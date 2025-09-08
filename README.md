@@ -1,2 +1,2 @@
 # Capstone
-Monitoreo de abuelos a través de cámaras instaladas en sus hogares
+Monitoreo de adultos mayores a través de cámaras instaladas en sus hogares
