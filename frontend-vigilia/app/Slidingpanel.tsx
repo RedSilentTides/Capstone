@@ -1,9 +1,8 @@
 // SlidingPanel.tsx
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
-import { X, User, Bell, Settings, HelpCircle, CalendarCheck } from 'lucide-react-native';
+import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { MenuItem } from './MenuItem';
 
 interface SlidingPanelProps {
   isOpen: boolean;
@@ -14,6 +13,30 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
   const router = useRouter();
 
   if (!isOpen) return null;
+
+  // Componente interno MenuItem
+  const MenuItem = ({
+    icon,
+    text,
+    onPress,
+  }: {
+    icon: React.ReactNode;
+    text: string;
+    onPress: () => void;
+  }) => {
+    return (
+      <Pressable
+        style={styles.menuItem}
+        onPress={onPress}
+      >
+        <View style={styles.menuLeft}>
+          {icon}
+          <Text style={styles.menuText}>{text}</Text>
+        </View>
+        <ChevronRight size={18} />
+      </Pressable>
+    );
+  };
 
   return (
     <>
@@ -26,7 +49,7 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
           {/* Header */}
           <View style={styles.panelHeader}>
             <View style={styles.logoName}>
-              <Image source={require('../assets/LogoVigilIa.png')} style={styles.logo} />
+              <Image source={require('../assets/images/LogoVigilIa.png')} style={styles.logo} />
               <Text style={styles.appName}>VigilIA</Text>
             </View>
             <Pressable onPress={onClose}>
@@ -116,5 +139,17 @@ const styles = StyleSheet.create({
   },
   logoName: { flexDirection: 'row', alignItems: 'center' },
   logo: { width: 40, height: 40 },
-  appName: { fontSize: 18, fontWeight: 'bold', marginLeft: 8 }, // usa marginLeft en vez de gap
+  appName: { fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
+
+  menuItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  menuLeft: { flexDirection: 'row', alignItems: 'center' },
+  menuText: { fontSize: 16, marginLeft: 8 },
 });
