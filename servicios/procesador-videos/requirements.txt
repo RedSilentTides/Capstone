@@ -1,0 +1,8 @@
+# Framework para la API
+fastapi
+uvicorn
+
+# Google Cloud
+google-cloud-storage
+pydantic
+google-cloud-pubsub
