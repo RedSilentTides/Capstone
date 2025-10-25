@@ -72,7 +72,7 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Crear Cuenta en VigilIAAAAAAAAAAAAAAAA</Text>
+      <Text style={styles.title}>Crear Cuenta en VigilIAAAAAA</Text>
 
       {/* Inputs para datos del usuario */}
       <TextInput
