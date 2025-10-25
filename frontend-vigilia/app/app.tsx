@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { Bell, Menu, Info, AlertTriangle, CheckCircle } from 'lucide-react-native';
 import SlidingPanel from './Slidingpanel';
 
-
 // Tipos de alerta
 type AlertType = 'info' | 'warning' | 'error' | 'success';
 
@@ -38,7 +37,7 @@ const planDetails = {
   ],
 };
 
-// Configuración de colores
+// Colores de alerta
 const alertConfig: Record<AlertType, { color: string }> = {
   info: { color: '#3b82f6' },
   warning: { color: '#f59e0b' },
@@ -46,7 +45,7 @@ const alertConfig: Record<AlertType, { color: string }> = {
   success: { color: '#10b981' },
 };
 
-// Componente de tarjeta de alerta
+// -------- COMPONENTE ALERTA --------
 function AlertCard({ alert, preview }: { alert: AlertItem; preview?: boolean }) {
   const config = alertConfig[alert.type];
 
@@ -81,7 +80,7 @@ function AlertCard({ alert, preview }: { alert: AlertItem; preview?: boolean }) 
   );
 }
 
-// Componente principal (Home)
+// -------- COMPONENTE HOME --------
 function Home() {
   const router = useRouter();
   const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -97,47 +96,51 @@ function Home() {
         </Pressable>
       )}
 
-      {/* Panel lateral */}
-      {isPanelOpen && <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />}
-
-      {/* Contenido principal */}
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        {/* Encabezado principal */}
         <View style={styles.hero}>
-          <Bell size={42} color="white" />
+          <Bell size={42} color="white" style={{ alignSelf: 'center' }} />
           <Text style={styles.heroTitle}>VigilIA</Text>
           <Text style={styles.heroSubtitle}>Planes imperdibles, tranquilidad para tu familia</Text>
 
-          {/* Opciones de planes */}
-          <View style={styles.planOptions}>
-            {['basico', 'plus', 'premium'].map((plan) => (
-              <Pressable
-                key={plan}
-                style={[styles.option, openPlan === plan && styles.optionActive]}
-                onPress={() => setOpenPlan(openPlan === plan ? null : plan)}
-              >
-                <Text style={styles.optionIcon}>
-                  {plan === 'basico' ? '🟢' : plan === 'plus' ? '⭐' : '💎'}
-                </Text>
-                <Text style={styles.optionText}>
-                  {plan === 'basico' ? 'Plan Básico' : plan === 'plus' ? 'Plan Plus+' : 'Plan Premium'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          {/* Sección de planes */}
+          <View style={styles.planSection}>
+            <View style={styles.planOptions}>
+              {['basico', 'plus', 'premium'].map((plan) => (
+                <View key={plan} style={{ width: '30%' }}>
+                  <Pressable
+                    style={[styles.option, openPlan === plan && styles.optionActive]}
+                    onPress={() => setOpenPlan(openPlan === plan ? null : plan)}
+                  >
+                    <Text style={styles.optionIcon}>
+                      {plan === 'basico' ? '🟢' : plan === 'plus' ? '⭐' : '💎'}
+                    </Text>
+                    <Text style={styles.optionText}>
+                      {plan === 'basico'
+                        ? 'Plan Básico'
+                        : plan === 'plus'
+                        ? 'Plan Plus+'
+                        : 'Plan Premium'}
+                    </Text>
+                  </Pressable>
 
-          {/* Lista de beneficios */}
-          {openPlan && (
-            <View style={styles.planDropdown}>
-              {planDetails[openPlan as keyof typeof planDetails].map((item, idx) => (
-                <Text key={idx} style={styles.planItem}>
-                  • {item}
-                </Text>
+                  {/* Lista desplegable */}
+                  {openPlan === plan && (
+                    <View style={styles.planDropdown}>
+                      {planDetails[plan as keyof typeof planDetails].map((item, idx) => (
+                        <Text key={idx} style={styles.planItem}>
+                          • {item}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
               ))}
             </View>
-          )}
+          </View>
         </View>
 
-        {/* Botón para alertas */}
+        {/* Botón para ver alertas */}
         <Pressable style={styles.alertButton} onPress={() => router.push('/alerts')}>
           <Bell size={18} color="white" style={{ marginRight: 8 }} />
           <Text style={styles.alertButtonText}>Ver todas las alertas</Text>
@@ -150,6 +153,13 @@ function Home() {
           ))}
         </View>
       </ScrollView>
+
+      {/* Panel lateral */}
+      {isPanelOpen && (
+        <View style={StyleSheet.absoluteFill}>
+          <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+        </View>
+      )}
     </View>
   );
 }
@@ -158,8 +168,7 @@ export default function App() {
   return <Home />;
 }
 
-// ------------------ ESTILOS ------------------
-
+// -------- ESTILOS --------
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   scrollContainer: { paddingBottom: 40 },
@@ -167,7 +176,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     left: 20,
-    zIndex: 10,
+    zIndex: 1000,
     backgroundColor: '#f3f4f6',
     padding: 10,
     borderRadius: 8,
@@ -178,22 +187,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
+    alignItems: 'center',
   },
   heroTitle: {
     color: 'white',
     fontSize: 28,
     fontWeight: 'bold',
     marginTop: 10,
+    textAlign: 'center',
   },
   heroSubtitle: {
     color: 'white',
     fontSize: 16,
     marginTop: 4,
+    textAlign: 'center',
+  },
+  planSection: {
+    width: '100%',
+    marginTop: 20,
+    alignItems: 'center',
   },
   planOptions: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 20,
+    width: '100%',
   },
   option: {
     alignItems: 'center',
@@ -206,12 +223,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fbbf24',
   },
   optionIcon: { fontSize: 22, marginBottom: 4 },
-  optionText: { fontWeight: '600', fontSize: 14 },
+  optionText: { fontWeight: '600', fontSize: 14, textAlign: 'center' },
   planDropdown: {
-    marginTop: 10,
+    marginTop: 8,
     backgroundColor: '#f3f4f6',
-    padding: 12,
-    borderRadius: 12,
+    padding: 10,
+    borderRadius: 10,
   },
   planItem: { fontSize: 14, marginVertical: 2 },
   alertButton: {

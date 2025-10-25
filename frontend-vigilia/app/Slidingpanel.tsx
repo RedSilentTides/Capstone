@@ -1,4 +1,3 @@
-// SlidingPanel.tsx
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
 import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight } from 'lucide-react-native';
@@ -14,7 +13,6 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
 
   if (!isOpen) return null;
 
-  // Componente interno MenuItem
   const MenuItem = ({
     icon,
     text,
@@ -23,36 +21,31 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
     icon: React.ReactNode;
     text: string;
     onPress: () => void;
-  }) => {
-    return (
-      <Pressable
-        style={styles.menuItem}
-        onPress={onPress}
-      >
-        <View style={styles.menuLeft}>
-          {icon}
-          <Text style={styles.menuText}>{text}</Text>
-        </View>
-        <ChevronRight size={18} />
-      </Pressable>
-    );
-  };
+  }) => (
+    <Pressable style={styles.menuItem} onPress={onPress}>
+      <View style={styles.menuLeft}>
+        {icon}
+        <Text style={styles.menuText}>{text}</Text>
+      </View>
+      <ChevronRight size={18} />
+    </Pressable>
+  );
 
   return (
     <>
-      {/* Overlay */}
+      {/* Fondo oscuro */}
       <Pressable style={styles.overlay} onPress={onClose} />
 
-      {/* Sliding panel */}
+      {/* Panel lateral */}
       <View style={styles.slidingPanel}>
         <View style={styles.panelContent}>
           {/* Header */}
           <View style={styles.panelHeader}>
-            <View style={styles.logoName}>
+            <View style={styles.logoContainer}>
               <Image source={require('../assets/images/LogoVigilIa.png')} style={styles.logo} />
               <Text style={styles.appName}>VigilIA</Text>
             </View>
-            <Pressable onPress={onClose}>
+            <Pressable onPress={onClose} style={styles.closeButton}>
               <X size={24} />
             </Pressable>
           </View>
@@ -133,14 +126,19 @@ const styles = StyleSheet.create({
   panelContent: { flex: 1 },
   panelHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between', // separa logo y botón
     marginBottom: 24,
   },
-  logoName: { flexDirection: 'row', alignItems: 'center' },
-  logo: { width: 40, height: 40 },
-  appName: { fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
-
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logo: { width: 40, height: 40, marginRight: 8 },
+  appName: { fontSize: 20, fontWeight: 'bold' },
+  closeButton: {
+    padding: 4,
+  },
   menuItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',

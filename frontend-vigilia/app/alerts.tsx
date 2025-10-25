@@ -169,7 +169,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
   },
   header: {
-    alignItems: 'center',
+    position: 'relative',          
+    alignItems: 'center',          
     justifyContent: 'center',
     backgroundColor: '#6366f1',
     paddingVertical: 30,
@@ -177,11 +178,11 @@ const styles = StyleSheet.create({
   },
   logo: {
     position: 'absolute',
-    left: 20,
-    top: 25,
+    left: -175,
+    top: -8,
     width: 50,
     height: 50,
-  },
+  },   
   titleHeader: {
     fontSize: 24,
     fontWeight: 'bold',
