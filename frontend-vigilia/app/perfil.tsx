@@ -6,8 +6,10 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // Importa funciones de Firebase Auth
-import { getAuth, EmailAuthProvider, reauthenticateWithCredential, updatePassword, deleteUser } from 'firebase/auth'; 
+import { getAuth, EmailAuthProvider, reauthenticateWithCredential, updatePassword, deleteUser } from 'firebase/auth';
 import { auth as firebaseAuthInstance } from '../firebaseConfig'; // Tu instancia de auth
+// Importar useAuth para actualizar el estado global
+import { useAuth } from './_layout';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -46,6 +48,7 @@ function MenuItem({ icon, text, children, open, onPress, isDestructive = false }
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { setAuthState } = useAuth(); // Obtener función para actualizar estado global
   const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -199,15 +202,18 @@ export default function ProfileScreen() {
                           }
                       }
 
-                      // 5. Limpiar token local y redirigir
+                      // 5. Limpiar token local, actualizar estado y redirigir
                        try {
                            const tokenKey = 'userToken';
                            if (Platform.OS === 'web') await AsyncStorage.removeItem(tokenKey);
                            else await SecureStore.deleteItemAsync(tokenKey);
                        } catch(e) { console.error("Error limpiando token local:", e); }
 
+                      // Actualizar estado global y navegar
+                      setAuthState(false);
+                      router.replace('/login');
+
                       Alert.alert("Cuenta Eliminada", "Tu cuenta ha sido eliminada permanentemente.");
-                      router.replace('/login'); // Redirigir a login
 
                   } catch (error: any) {
                        console.error("Error al eliminar cuenta:", error);

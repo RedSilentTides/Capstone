@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import axios, { AxiosError } from 'axios'; // Importamos AxiosError para el manejo de tipos
 // Añadimos Image e importamos Platform
-import { Alert, Pressable, StyleSheet, Text, TextInput, View, Image, Platform } from 'react-native'; 
-import { Link, router } from 'expo-router';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View, Image, Platform } from 'react-native';
+import { Link, useRouter } from 'expo-router';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
 export default function RegisterScreen() {
+  const router = useRouter(); // Hook para navegación
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,11 +37,14 @@ export default function RegisterScreen() {
       // --- FIN DEL CAMBIO ---
 
       console.log('Registro exitoso:', response.data);
-      Alert.alert(
-        '¡Éxito!',
-        'Usuario registrado correctamente. Serás redirigido para iniciar sesión.',
-        [{ text: 'OK', onPress: () => router.replace('/login') }] 
-      );
+
+      // Redirigir al login inmediatamente
+      router.replace('/login');
+
+      // Mostrar mensaje de éxito después de la navegación
+      setTimeout(() => {
+        Alert.alert('¡Éxito!', 'Usuario registrado correctamente. Ahora puedes iniciar sesión.');
+      }, 100);
 
     } catch (error) { // Usamos el manejo de errores mejorado
         let errorMessage = 'Ocurrió un error al registrar. Intenta de nuevo.';

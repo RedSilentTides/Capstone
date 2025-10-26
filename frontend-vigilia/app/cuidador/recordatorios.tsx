@@ -8,6 +8,7 @@ import axios, { AxiosError } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlusCircle, Calendar, Clock, Repeat, Trash2, Edit2 } from 'lucide-react-native';
+import { useAuth } from '../_layout';
 // Descomenta si instalaste el Date Time Picker
 // import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 // Descomenta si instalaste el Picker Select
@@ -44,6 +45,7 @@ interface AdultoMayorSimple {
 
 export default function RecordatoriosScreen() {
   const router = useRouter();
+  const { setAuthState } = useAuth();
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +119,11 @@ export default function RecordatoriosScreen() {
     setIsLoading(true);
     setError(null);
     const token = await getToken();
-    if (!token) { router.replace('/login'); return; }
+    if (!token) {
+      setAuthState(false);
+      router.replace('/login');
+      return;
+    }
 
     try {
       console.log(`Obteniendo recordatorios para adulto_mayor_id: ${selectedAdultoMayorId}...`);
@@ -130,16 +136,27 @@ export default function RecordatoriosScreen() {
       console.log(`Recordatorios obtenidos: ${response.data.length}`);
     } catch (err) {
       console.error('Error al obtener recordatorios:', err);
-      setError('No se pudo cargar la lista de recordatorios.');
-      // Manejo error sesión expirada...
-      if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
-         setTimeout(() => router.replace('/login'), 1500);
+
+      if (axios.isAxiosError(err)) {
+        if (err.response?.status === 401) {
+          // Token inválido o expirado → cerrar sesión
+          setError('Tu sesión ha expirado.');
+          setAuthState(false);
+          setTimeout(() => router.replace('/login'), 1500);
+        } else if (err.response?.status === 403) {
+          // Sin permisos → mostrar error pero NO cerrar sesión
+          setError('No tienes permisos para ver los recordatorios de esta persona.');
+        } else {
+          setError('No se pudo cargar la lista de recordatorios.');
+        }
+      } else {
+        setError('No se pudo cargar la lista de recordatorios.');
       }
     } finally {
       setIsLoading(false);
     }
   // Dependemos ahora de selectedAdultoMayorId para re-buscar si cambia
-  }, [getToken, router, selectedAdultoMayorId]);
+  }, [getToken, router, selectedAdultoMayorId, setAuthState]);
 
 
   const handleAddOrUpdateReminder = async () => {
@@ -147,9 +164,13 @@ export default function RecordatoriosScreen() {
          Alert.alert('Error', 'Completa Título, Fecha/Hora y selecciona una persona.');
          return;
      }
-     
+
      const token = await getToken();
-     if (!token) { router.replace('/login'); return; }
+     if (!token) {
+       setAuthState(false);
+       router.replace('/login');
+       return;
+     }
 
      const dataToSend = {
          titulo: currentReminder.titulo,
@@ -191,7 +212,11 @@ export default function RecordatoriosScreen() {
   
   const handleDeleteReminder = async (id: number) => {
        const token = await getToken();
-       if (!token) { router.replace('/login'); return; }
+       if (!token) {
+         setAuthState(false);
+         router.replace('/login');
+         return;
+       }
 
        Alert.alert(
            "Confirmar Eliminación",
@@ -289,7 +314,7 @@ export default function RecordatoriosScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
-          <Image source={require('../assets/images/LogoVigilIa2.png')} style={styles.logo} resizeMode="contain"/>
+          <Image source={require('../../assets/images/LogoVigilIa2.png')} style={styles.logo} resizeMode="contain"/>
         </Pressable>
         <Text style={styles.titleHeader}>Recordatorios</Text>
         <Pressable onPress={openAddModal} style={styles.addButton} disabled={!selectedAdultoMayorId}>

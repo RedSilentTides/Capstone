@@ -4,8 +4,7 @@ import { useRouter } from 'expo-router';
 import axios, { AxiosError } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// Importa un icono si quieres para el header
-// import { Settings } from 'lucide-react-native'; 
+import { useAuth } from '../_layout'; 
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -25,6 +24,7 @@ interface AlertConfig {
 
 export default function ConfiguracionScreen() {
   const router = useRouter();
+  const { setAuthState } = useAuth();
   const [config, setConfig] = useState<Partial<AlertConfig>>({}); // Usamos Partial para estado inicial
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -48,6 +48,7 @@ export default function ConfiguracionScreen() {
 
     if (!token) {
       Alert.alert('Error', 'No se encontró tu sesión. Por favor, inicia sesión de nuevo.');
+      setAuthState(false);
       router.replace('/login');
       return;
     }
@@ -68,7 +69,7 @@ export default function ConfiguracionScreen() {
       console.error('Error al obtener configuración:', err);
       if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
          setError('Tu sesión ha expirado.');
-         // Podríamos borrar token y redirigir aquí también
+         setAuthState(false);
          setTimeout(() => router.replace('/login'), 2000);
       } else if (axios.isAxiosError(err) && err.response?.status === 404) {
           setError('No se encontró tu configuración. ¿Registro incompleto? Contacta soporte.');
@@ -79,7 +80,7 @@ export default function ConfiguracionScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [getToken, router]);
+  }, [getToken, router, setAuthState]);
 
   // Cargar configuración al montar la pantalla
   useEffect(() => {
@@ -95,6 +96,7 @@ export default function ConfiguracionScreen() {
     if (!token) {
       Alert.alert('Error', 'No se encontró tu sesión.');
       setIsSaving(false);
+      setAuthState(false);
       router.replace('/login');
       return;
     }
@@ -123,6 +125,7 @@ export default function ConfiguracionScreen() {
       console.error('Error al guardar configuración:', err);
        if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
          setError('Tu sesión ha expirado.');
+         setAuthState(false);
          setTimeout(() => router.replace('/login'), 2000);
       } else {
          setError('No se pudo guardar la configuración.');

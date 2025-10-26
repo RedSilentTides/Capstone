@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AlertTriangle, CheckCircle, Info, X } from 'lucide-react-native'; // Mantienes tus iconos
+import { AlertTriangle, CheckCircle, Info, X } from 'lucide-react-native';
+import { useAuth } from '../_layout';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -87,6 +88,7 @@ function AlertCard({ event, onDismiss }: { event: EventoCaida; onDismiss: (id: n
 // --- Pantalla Principal ---
 export default function AlertasScreen() {
   const router = useRouter();
+  const { setAuthState } = useAuth();
   const [eventos, setEventos] = useState<EventoCaida[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +111,7 @@ export default function AlertasScreen() {
 
     if (!token) {
       Alert.alert('Error', 'Sesión no válida.');
+      setAuthState(false);
       router.replace('/login');
       return;
     }
@@ -131,6 +134,7 @@ export default function AlertasScreen() {
       console.error('Error al obtener eventos:', err);
        if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
          setError('Tu sesión ha expirado.');
+         setAuthState(false);
          setTimeout(() => router.replace('/login'), 2000);
       } else {
         setError('No se pudo cargar el historial de alertas.');
@@ -138,7 +142,7 @@ export default function AlertasScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [getToken, router]);
+  }, [getToken, router, setAuthState]);
 
   // Cargar eventos al montar
   useEffect(() => {
@@ -159,7 +163,7 @@ export default function AlertasScreen() {
          <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
             {/* Podríamos poner un icono de flecha atrás si quisiéramos */}
              <Image
-               source={require('../assets/images/LogoVigilIa2.png')}
+               source={require('../../assets/images/LogoVigilIa2.png')}
                style={styles.logo}
                resizeMode="contain"
              />
