@@ -1,23 +1,21 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { Stack, useRouter, Slot } from 'expo-router';
+import { Stack, useRouter } from 'expo-router'; // Slot no es necesario aquí usualmente
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform, View, ActivityIndicator, StyleSheet } from 'react-native';
-import SlidingPanel from '../components/Slidingpanel'; // Importa tu componente
-import { Menu } from 'lucide-react-native'; // Importa el icono del menú
-import { Pressable } from 'react-native'; // Importa Pressable
+import { Platform, View, ActivityIndicator, StyleSheet, Pressable } from 'react-native'; // Pressable ya estaba
+// --- RUTA CORREGIDA ---
+import SlidingPanel from '../components/Slidingpanel'; // Importa desde la carpeta components
+// --- FIN RUTA CORREGIDA ---
+import { Menu } from 'lucide-react-native';
 
-// --- Contexto de Autenticación ---
-// Creamos un contexto para compartir el estado de autenticación (si está logueado o no)
-// y la función para cambiar ese estado (login/logout).
+// --- Contexto de Autenticación (Sin cambios) ---
 type AuthContextType = {
   isAuthenticated: boolean;
   setAuthState: (isAuthenticated: boolean) => void;
-  isLoading: boolean; // Añadimos estado de carga inicial
+  isLoading: boolean;
 };
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Hook personalizado para usar fácilmente el contexto de autenticación
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
@@ -26,11 +24,10 @@ export function useAuth() {
   return context;
 }
 
-// --- Proveedor de Autenticación ---
-// Este componente envolverá toda la app y manejará la lógica de sesión.
+// --- Proveedor de Autenticación (Sin cambios) ---
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setAuthState] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Estado para la carga inicial del token
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -50,36 +47,39 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           console.log('_layout: No hay token, marcando como no autenticado.');
           setAuthState(false);
-          // Opcional: Redirigir aquí si prefieres manejarlo centralmente
-          // router.replace('/login'); 
         }
       } catch (e) {
         console.error('_layout: Error al leer el token:', e);
-        setAuthState(false); // Asume no autenticado si hay error
+        setAuthState(false);
       } finally {
-        setIsLoading(false); // Termina la carga inicial
+        setIsLoading(false);
       }
     };
-
     checkToken();
-  }, []); // Se ejecuta solo al montar el componente
+  }, []);
 
-  // Efecto para redirigir basado en el estado de autenticación
   useEffect(() => {
-    if (!isLoading) { // Solo redirige después de verificar el token
-      if (isAuthenticated) {
-        // Si está autenticado, asegúrate de que esté en la sección principal
-        // Esto es útil si el usuario estaba en /login y luego se autentica
-        console.log('_layout: Autenticado, asegurando que esté en /');
-        // router.replace('/'); // Puedes descomentar si quieres forzar ir a '/' siempre al autenticar
-      } else {
-        // Si no está autenticado, redirige a login
+    if (!isLoading) {
+      if (!isAuthenticated) {
         console.log('_layout: No autenticado, redirigiendo a /login');
         router.replace('/login');
+      } else {
+         console.log('_layout: Autenticado.');
+         // Podríamos verificar si está en login/register y redirigir a '/'
+         // const currentRoute = router. // Expo router no expone ruta actual fácilmente aquí
+         // if (currentRoute === '/login' || currentRoute === '/register') {
+         //    router.replace('/');
+         // }
       }
     }
-  }, [isAuthenticated, isLoading, router]); // Se ejecuta cuando cambian estos valores
+  }, [isAuthenticated, isLoading, router]);
 
+  // Renderiza los hijos solo después de la carga inicial Y si está autenticado
+  // O si NO está autenticado (para mostrar login/register)
+  // Las pantallas dentro del Stack decidirán qué mostrar basado en si `isAuthenticated` es true/false
+  // if (isLoading) {
+  //     return <View style={styles.loadingContainer}><ActivityIndicator size="large" /></View>;
+  // }
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, setAuthState, isLoading }}>
@@ -95,54 +95,110 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <RootLayoutNav isPanelOpen={isPanelOpen} setIsPanelOpen={setIsPanelOpen} />
-      {/* Renderiza el panel deslizante fuera de la navegación principal */}
-      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+      {/* Usamos función como hijo para acceder al contexto aquí si fuera necesario */}
+      <AuthContext.Consumer> 
+        {(authContext) => (
+          <>
+            <RootLayoutNav 
+              isPanelOpen={isPanelOpen} 
+              setIsPanelOpen={setIsPanelOpen} 
+              isLoadingAuth={authContext?.isLoading ?? true} // Pasa el estado de carga
+            />
+            {/* Solo muestra el panel si está autenticado y no cargando */}
+            {(authContext?.isAuthenticated && !authContext?.isLoading) && (
+              <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+            )}
+          </>
+        )}
+      </AuthContext.Consumer>
     </AuthProvider>
   );
 }
 
-// Componente separado para la navegación, para poder usar el hook useAuth
-function RootLayoutNav({ isPanelOpen, setIsPanelOpen }: { isPanelOpen: boolean, setIsPanelOpen: (isOpen: boolean) => void }) {
-  const { isAuthenticated, isLoading } = useAuth(); // Obtiene el estado del contexto
+// Componente separado para la navegación
+function RootLayoutNav({ 
+    isPanelOpen, 
+    setIsPanelOpen,
+    isLoadingAuth // Recibe el estado de carga
+  }: { 
+    isPanelOpen: boolean, 
+    setIsPanelOpen: (isOpen: boolean) => void,
+    isLoadingAuth: boolean 
+}) {
+  const { isAuthenticated } = useAuth(); // Obtiene el estado del contexto
 
-  // Muestra un indicador de carga mientras se verifica el token
-  if (isLoading) {
+  // Muestra un indicador de carga global mientras AuthProvider verifica el token
+  if (isLoadingAuth) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#1e3a8a"/>
       </View>
     );
   }
 
   return (
-    // Usa Stack para la navegación principal
-    <Stack screenOptions={{ headerShown: false }}> 
-      {/* Pantalla principal (Index) con opción de header personalizado */}
+    // Usa Stack. Navigator provee el contexto de navegación
+    <Stack screenOptions={{ 
+        headerShown: false // Ocultamos header por defecto, lo activamos por pantalla
+    }}>
+      {/* Pantallas Públicas (accesibles sin login) */}
       <Stack.Screen 
-        name="index" 
-        options={{ 
-          headerShown: true, // Mostramos el header aquí
-          title: 'VigilIA Dashboard', // Título del header
-          // Botón de menú para abrir el SlidingPanel
+        name="login" 
+        options={{ title: 'Iniciar Sesión', headerShown: false }} // Sin header en login
+        redirect={isAuthenticated} // Si está autenticado, redirige fuera de login (a '/')
+      />
+      <Stack.Screen 
+        name="register" 
+        options={{ title: 'Crear Cuenta', headerShown: false }} // Sin header en register
+        redirect={isAuthenticated} // Si está autenticado, redirige fuera de register (a '/')
+      />
+
+      {/* Pantallas Privadas (requieren login) */}
+      <Stack.Screen
+        name="index"
+        options={{
+          headerShown: true, // Mostramos header en el dashboard
+          title: 'VigilIA Dashboard',
           headerLeft: () => (
              <Pressable onPress={() => setIsPanelOpen(true)} style={{ marginLeft: 15 }}>
-               <Menu size={24} color="black" />
+               <Menu size={24} color="#1f2937" /> {/* Color oscuro para header claro */}
              </Pressable>
           ),
-        }} 
+          // Podrías añadir headerRight aquí si necesitas (ej. icono de notificaciones)
+        }}
+        redirect={!isAuthenticated} // Si NO está autenticado, redirige fuera de index (a '/login')
       />
-      {/* Pantallas de autenticación (sin header por defecto) */}
-      <Stack.Screen name="login" options={{ title: 'Iniciar Sesión' }} />
-      <Stack.Screen name="register" options={{ title: 'Crear Cuenta' }} />
-      {/* Otras pantallas principales (se pueden configurar aquí o en sus propios _layout) */}
-      <Stack.Screen name="profile" options={{ title: 'Mi Perfil', presentation: 'modal' }} /> 
-      <Stack.Screen name="alerts" options={{ title: 'Alertas' }} />
-      <Stack.Screen name="reminders" options={{ title: 'Recordatorios' }} />
-      <Stack.Screen name="settings" options={{ title: 'Configuración' }} />
-      <Stack.Screen name="help" options={{ title: 'Ayuda' }} />
-      {/* Puedes definir aquí las rutas de cuidador si quieres o usar un layout anidado */}
-      {/* <Stack.Screen name="(cuidador)" options={{ headerShown: false }} /> */}
+       <Stack.Screen 
+        name="perfil" // Nombre de archivo actualizado
+        options={{ 
+            title: 'Mi Perfil', 
+            // presentation: 'modal' // Puedes mantenerlo modal o hacerlo pantalla completa
+            headerShown: true // Mostrar header estándar o personalizado
+        }} 
+        redirect={!isAuthenticated} 
+      />
+       <Stack.Screen 
+        name="ayuda" // Nombre de archivo actualizado
+        options={{ 
+            title: 'Ayuda',
+            headerShown: true // Mostrar header estándar o personalizado
+        }} 
+        redirect={!isAuthenticated} 
+      />
+      
+      {/* Grupo de rutas del cuidador */}
+      {/* Usamos 'name' para referirnos a la carpeta del grupo */}
+      <Stack.Screen 
+          name="(cuidador)" 
+          options={{ headerShown: false }} // El layout interno de (cuidador) definirá sus headers
+          redirect={!isAuthenticated} 
+      />
+
+      {/* Pantallas eliminadas (ya no se definen) */}
+      {/* <Stack.Screen name="settings" ... /> */}
+      {/* <Stack.Screen name="alerts" ... /> (Ahora está dentro de cuidador) */}
+      {/* <Stack.Screen name="reminders" ... /> (Ahora está dentro de cuidador) */}
+      
     </Stack>
   );
 }
@@ -152,5 +208,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f0f4f8' // Fondo mientras carga
   },
 });
