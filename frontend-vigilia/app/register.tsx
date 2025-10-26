@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-// Usamos componentes de react-native para compatibilidad universal
-import axios from 'axios'; // Asegúrate de importar AxiosError
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-// Importamos Link para navegar y router para redirigir programáticamente
+import axios, { AxiosError } from 'axios'; // Importamos AxiosError para el manejo de tipos
+// Añadimos Image e importamos Platform
+import { Alert, Pressable, StyleSheet, Text, TextInput, View, Image, Platform } from 'react-native'; 
 import { Link, router } from 'expo-router';
 
-// URL de tu API backend desplegada en Cloud Run
+// URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
 export default function RegisterScreen() {
@@ -13,16 +12,13 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // --- Selección de Rol (Ejemplo Básico) ---
-  // Añadimos un estado para el tipo de cuenta
-  const [tipoCuenta, setTipoCuenta] = useState('cuidador'); // Por defecto 'cuidador'
+  // Renombramos 'tipoCuenta' a 'rol' para coincidir con el backend
+  const [rol, setRol] = useState<'cuidador' | 'adulto_mayor'>('cuidador'); // Tipo explícito
 
   const onRegisterPressed = async () => {
     if (loading) return;
     setLoading(true);
 
-    // Validación simple (puedes añadir más)
     if (!nombre || !email || password.length < 6) {
         Alert.alert('Error', 'Por favor, completa todos los campos (contraseña mín. 6 caracteres).');
         setLoading(false);
@@ -30,91 +26,96 @@ export default function RegisterScreen() {
     }
 
     try {
-      // Llamamos al endpoint /register de la API
-      // Enviamos el 'nombre', 'email', 'password'
-      // El backend asignará el rol basado en su lógica (actualmente por defecto 'cuidador')
-      // Si quisieras pasar el rol desde aquí, tendrías que modificar el backend también.
+      // --- CAMBIO AQUÍ: Enviamos el 'rol' seleccionado ---
       const response = await axios.post(`${API_URL}/register`, {
         nombre: nombre,
         email: email,
         password: password,
-        // Opcional: Podrías enviar el tipoCuenta si modificas el backend para aceptarlo
-        // tipo_cuenta: tipoCuenta 
+        rol: rol // Enviamos el rol seleccionado ('cuidador' o 'adulto_mayor')
       });
+      // --- FIN DEL CAMBIO ---
 
       console.log('Registro exitoso:', response.data);
-      router.replace('/login');
-      Alert.alert('¡Éxito!', 'Usuario registrado correctamente. Serás redirigido para iniciar sesión.');
+      Alert.alert(
+        '¡Éxito!',
+        'Usuario registrado correctamente. Serás redirigido para iniciar sesión.',
+        [{ text: 'OK', onPress: () => router.replace('/login') }] 
+      );
 
-    } catch (error) {
-        // Manejo de errores más seguro con TypeScript
+    } catch (error) { // Usamos el manejo de errores mejorado
         let errorMessage = 'Ocurrió un error al registrar. Intenta de nuevo.';
-        let errorData: any = null; // Para guardar los datos específicos del error
+        let errorData: any = null; 
 
-        if (axios.isAxiosError(error)) { // Verifica si es un error de Axios
+        if (axios.isAxiosError(error)) { 
           errorData = error.response?.data;
-          errorMessage = errorData?.detail || error.message || errorMessage; // Usa el detalle si existe
+          // Usamos el 'detail' que envía FastAPI si existe
+          errorMessage = errorData?.detail || error.message || errorMessage; 
           console.error('Error de Axios en registro:', errorData || error.message);
-        } else if (error instanceof Error) { // Verifica si es un error estándar de JS
+        } else if (error instanceof Error) { 
           errorMessage = error.message;
           console.error('Error general en registro:', error.message);
         } else {
-          // Si es otro tipo de error inesperado
           console.error('Error desconocido en registro:', error);
         }
-
+    
         Alert.alert('Error de Registro', errorMessage);
-
-      } finally {
-        setLoading(false);
+        
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Crear Cuenta en VigilIAAAAAA</Text>
+      {/* Añadimos el logo */}
+      <Image 
+        source={require('../assets/images/LogoVigilIa.png')} // Asegúrate que la ruta sea correcta
+        style={styles.logo}
+        resizeMode="contain"
+      />
 
-      {/* Inputs para datos del usuario */}
+      <Text style={styles.title}>Crear Cuenta en VigilIA</Text>
+
+      {/* Inputs */}
       <TextInput
         style={styles.input}
         placeholder="Nombre Completo"
         value={nombre}
         onChangeText={setNombre}
-        autoCapitalize="words" // Capitaliza nombres
+        autoCapitalize="words"
       />
       <TextInput
         style={styles.input}
         placeholder="Correo electrónico"
         value={email}
         onChangeText={setEmail}
-        autoCapitalize="none" // No capitalizar emails
-        keyboardType="email-address" // Muestra teclado de email
-        textContentType="emailAddress" // Ayuda a autocompletar
+        autoCapitalize="none"
+        keyboardType="email-address"
+        textContentType="emailAddress"
       />
       <TextInput
         style={styles.input}
         placeholder="Contraseña (mín. 6 caracteres)"
         value={password}
         onChangeText={setPassword}
-        secureTextEntry // Oculta la contraseña
-        textContentType="newPassword" // Ayuda a gestores de contraseñas
+        secureTextEntry
+        textContentType="newPassword"
       />
 
-      {/* Selector de Rol Básico */}
-      <Text style={styles.label}>Tipo de cuenta:</Text>
+      {/* Selector de Rol */}
+      <Text style={styles.label}>¿Cómo usarás la aplicación?</Text>
       <View style={styles.roleSelector}>
         <Pressable 
-          style={[styles.roleButton, tipoCuenta === 'cuidador' && styles.roleButtonSelected]} 
-          onPress={() => setTipoCuenta('cuidador')}>
-          <Text style={tipoCuenta === 'cuidador' ? styles.roleTextSelected : styles.roleText}>Soy Cuidador</Text>
+          style={[styles.roleButton, rol === 'cuidador' && styles.roleButtonSelected]} 
+          onPress={() => setRol('cuidador')}>
+          <Text style={rol === 'cuidador' ? styles.roleTextSelected : styles.roleText}>Como Cuidador</Text>
         </Pressable>
         <Pressable 
-          style={[styles.roleButton, tipoCuenta === 'adulto_mayor' && styles.roleButtonSelected]} 
-          onPress={() => setTipoCuenta('adulto_mayor')}>
-           <Text style={tipoCuenta === 'adulto_mayor' ? styles.roleTextSelected : styles.roleText}>Recibiré Cuidados</Text>
+          style={[styles.roleButton, rol === 'adulto_mayor' && styles.roleButtonSelected]} 
+          onPress={() => setRol('adulto_mayor')}>
+           <Text style={rol === 'adulto_mayor' ? styles.roleTextSelected : styles.roleText}>Para Recibir Cuidados</Text>
         </Pressable>
       </View>
-
 
       {/* Botón de Registro */}
       <Pressable style={styles.button} onPress={onRegisterPressed} disabled={loading}>
@@ -131,55 +132,66 @@ export default function RegisterScreen() {
   );
 }
 
-// Estilos (puedes personalizarlos)
+// Estilos consistentes con login.tsx (añadiendo logo y selector de rol)
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     justifyContent: 'center', 
     paddingHorizontal: 20, 
-    backgroundColor: '#f0f4f8', // Un fondo suave
+    backgroundColor: '#f0f4f8', 
+  },
+   logo: {
+    width: 100, 
+    height: 100, 
+    alignSelf: 'center', 
+    marginBottom: 20, 
   },
   title: { 
-    fontSize: 28, // Más grande
+    fontSize: 28, 
     fontWeight: 'bold', 
     textAlign: 'center', 
     marginBottom: 30, 
-    color: '#1e3a8a', // Azul oscuro
+    color: '#1e3a8a', 
   },
   input: {
     backgroundColor: 'white',
-    height: 50, // Más altos
-    borderColor: '#d1d5db', // Gris claro
+    height: 50, 
+    borderColor: '#d1d5db', 
     borderWidth: 1,
-    borderRadius: 8, // Bordes más redondeados
-    marginBottom: 15, // Más espacio
-    paddingHorizontal: 15, // Más padding interno
+    borderRadius: 8, 
+    marginBottom: 15, 
+    paddingHorizontal: 15, 
     fontSize: 16,
   },
   label: {
     fontSize: 16,
-    color: '#374151', // Gris oscuro
+    color: '#374151', 
     marginBottom: 8,
     marginLeft: 4,
+    textAlign: 'center', // Centramos la pregunta
   },
   roleSelector: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 20,
+    justifyContent: 'space-around', // Espacio entre botones
+    marginBottom: 25, // Más espacio después
+    marginTop: 5, // Espacio antes
   },
   roleButton: {
     paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: '#60a5fa', // Azul claro
-    borderRadius: 20,
+    paddingHorizontal: 15, // Un poco menos padding horizontal
+    borderWidth: 1.5, // Borde ligeramente más grueso
+    borderColor: '#60a5fa', 
+    borderRadius: 20, // Más redondeado
+    minWidth: 120, // Ancho mínimo para que se vean bien
+    alignItems: 'center', // Centrar texto
   },
   roleButtonSelected: {
-    backgroundColor: '#60a5fa', // Azul claro
+    backgroundColor: '#60a5fa', 
   },
   roleText: {
-    color: '#60a5fa', // Azul claro
+    color: '#3b82f6', // Azul un poco más oscuro para texto no seleccionado
     fontSize: 14,
+    fontWeight: '500', // Semi-bold
   },
   roleTextSelected: {
      color: 'white',
@@ -187,11 +199,11 @@ const styles = StyleSheet.create({
      fontWeight: 'bold',
   },
   button: {
-    backgroundColor: '#2563eb', // Azul primario
+    backgroundColor: '#2563eb', 
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 10, // Espacio antes del botón
+    marginTop: 10, 
     marginBottom: 15,
   },
   buttonText: {
@@ -203,7 +215,7 @@ const styles = StyleSheet.create({
     marginTop: 15, 
   },
   linkText: {
-    color: '#2563eb', // Azul primario
+    color: '#2563eb', 
     textAlign: 'center',
     fontSize: 14,
   },

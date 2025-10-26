@@ -1,11 +1,11 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'; // Importa AsyncStorage
-import { Link, router } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-import { signInWithEmailAndPassword } from 'firebase/auth';
 import React, { useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { auth } from '../firebaseConfig'; // Import your Firebase auth instance
-console.log('SecureStore Module:', SecureStore);
+// Importamos Image para el logo
+import { View, Text, TextInput, Button, StyleSheet, Alert, Pressable, Image, Platform } from 'react-native'; 
+import { Link, router } from 'expo-router';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebaseConfig'; 
+import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -23,38 +23,34 @@ export default function LoginScreen() {
     }
 
     try {
-      // Use Firebase SDK to sign in
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       console.log('Login exitoso, usuario:', user.uid);
 
-      // Get the Firebase ID Token
       const idToken = await user.getIdToken();
-      console.log('Token obtenido:', idToken ? 'Sí' : 'No');
+      console.log('Token obtenido:', idToken ? 'Sí' : 'No'); 
 
-      // **Save the token securely using setItemAsync**
-      const tokenKey = 'userToken'; // Define la llave una vez
+      const tokenKey = 'userToken'; 
       try {
         if (Platform.OS === 'web') {
           await AsyncStorage.setItem(tokenKey, idToken);
           console.log('Token guardado en AsyncStorage (web).');
-          router.replace('/');
         } else {
           await SecureStore.setItemAsync(tokenKey, idToken);
           console.log('Token guardado en SecureStore (móvil).');
-          router.replace('/');
         }
+        // Redirige SOLO después de guardar el token con éxito
+        router.replace('/'); 
+        // Puedes quitar la alerta si la redirección es suficiente
+        Alert.alert('¡Bienvenido!', 'Inicio de sesión exitoso.'); 
+
       } catch (storageError) {
           console.error("Error al guardar el token:", storageError);
-          // Podrías mostrar una alerta al usuario aquí también si el guardado falla
           Alert.alert('Error', 'No se pudo guardar la sesión de forma segura.');
-          setLoading(false); // Detiene el loading si el guardado falla
-          return; // No continúes si no se pudo guardar el token
+          // No redirijas si no se pudo guardar
       }
 
-      Alert.alert('¡Bienvenido!', 'Inicio de sesión exitoso.');
-
-    } catch (error: any) {
+    } catch (error: any) { 
       console.error('Error en login:', error.code || error.message);
       let friendlyMessage = 'Ocurrió un error al iniciar sesión.';
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -70,6 +66,13 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Añadimos el logo */}
+      <Image 
+        source={require('../assets/images/LogoVigilIa.png')} // Asegúrate que la ruta sea correcta
+        style={styles.logo}
+        resizeMode="contain" // Ajusta cómo se muestra la imagen
+      />
+
       <Text style={styles.title}>Iniciar Sesión en VigilIA</Text>
 
       <TextInput
@@ -87,7 +90,7 @@ export default function LoginScreen() {
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        textContentType="password"
+        textContentType="password" 
       />
 
       <Pressable style={styles.button} onPress={onLoginPressed} disabled={loading}>
@@ -103,37 +106,43 @@ export default function LoginScreen() {
   );
 }
 
-// Styles
+// Estilos actualizados para consistencia y logo
 const styles = StyleSheet.create({
-    container: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    backgroundColor: '#f0f4f8',
+    container: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    paddingHorizontal: 20, 
+    backgroundColor: '#f0f4f8', 
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 30,
-    color: '#1e3a8a',
+  logo: {
+    width: 100, // Ajusta el tamaño según tu logo
+    height: 100, // Ajusta el tamaño según tu logo
+    alignSelf: 'center', // Centra el logo
+    marginBottom: 20, // Espacio debajo del logo
+  },
+  title: { 
+    fontSize: 28, 
+    fontWeight: 'bold', 
+    textAlign: 'center', 
+    marginBottom: 30, 
+    color: '#1e3a8a', 
   },
   input: {
     backgroundColor: 'white',
-    height: 50,
-    borderColor: '#d1d5db',
+    height: 50, 
+    borderColor: '#d1d5db', 
     borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 15,
-    paddingHorizontal: 15,
+    borderRadius: 8, 
+    marginBottom: 15, 
+    paddingHorizontal: 15, 
     fontSize: 16,
   },
   button: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#2563eb', 
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 10, 
     marginBottom: 15,
   },
   buttonText: {
@@ -142,10 +151,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   linkContainer: {
-     marginTop: 15,
+     marginTop: 15, 
   },
   linkText: {
-    color: '#2563eb',
+    color: '#2563eb', 
     textAlign: 'center',
     fontSize: 14,
   },
