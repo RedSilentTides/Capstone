@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useCallback, ReactNode } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Image, StyleSheet, Alert, ActivityIndicator, Platform, Button } from 'react-native';
-import { User, Mail, Lock, Trash2, ChevronRight } from 'lucide-react-native'; // Iconos actualizados
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Platform, Button } from 'react-native';
+import { User, Lock, Trash2, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// Importa funciones de Firebase Auth
-import { getAuth, EmailAuthProvider, reauthenticateWithCredential, updatePassword, deleteUser } from 'firebase/auth';
-import { auth as firebaseAuthInstance } from '../firebaseConfig'; // Tu instancia de auth
-// Importar useAuth para actualizar el estado global
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, deleteUser } from 'firebase/auth';
+import { auth as firebaseAuthInstance } from '../firebaseConfig';
 import { useAuth } from './_layout';
+import Header from '../components/Header';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -248,20 +247,12 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header */}
-        <View style={styles.header}>
-        {/* Botón Volver (opcional, si _layout no pone header) */}
-         <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backButton}>
-             {/* <ChevronLeft size={24} color="#fff" /> Podrías usar un icono */}
-             <Image source={require("../assets/images/LogoVigilIa2.png")} style={styles.logo} />
-         </Pressable>
-         <View style={styles.headerCenter}>
-             <User size={28} color="#fff" style={{ marginRight: 8 }} />
-             <Text style={styles.title}>Mi Perfil</Text>
-         </View>
-         {/* Espacio para centrar */}
-         <View style={{ width: 40 }}/> 
-        </View>
+      {/* Header con el componente reutilizable */}
+      <Header
+        title="Mi Perfil"
+        backgroundColor="#8b5cf6"
+        icon={<User size={28} color="#fff" />}
+      />
 
       {/* Información del Usuario (No editable aquí directamente) */}
       <View style={styles.userInfoSection}>
@@ -343,16 +334,6 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   errorText: { color: 'red', textAlign: 'center', marginBottom: 10 },
   container: { flex: 1, backgroundColor: "#f9fafb" },
-  header: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between", // Para alinear botón atrás, centro y espacio
-    backgroundColor: "#8b5cf6", paddingVertical: 15, paddingHorizontal: 15, // Ajusta padding
-    marginBottom: 16,
-    // Quitamos border radius si es pantalla completa
-  },
-  backButton: { padding: 5 }, // Área clickeable para volver
-  logo: { width: 40, height: 40, resizeMode: 'contain' }, // Logo en lugar de flecha
-  headerCenter: { flexDirection: "row", alignItems: "center" },
-  title: { fontSize: 22, fontWeight: "700", color: "#fff" },
   userInfoSection: {
       backgroundColor: '#fff',
       padding: 15,

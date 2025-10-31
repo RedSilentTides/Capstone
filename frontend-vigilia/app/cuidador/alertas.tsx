@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Platform, Image, Button} from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable, Platform, Button} from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AlertTriangle, CheckCircle, Info, X } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle, Info, X, Bell } from 'lucide-react-native';
 import { useAuth } from '../_layout';
+import Header from '../../components/Header';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -158,18 +159,12 @@ export default function AlertasScreen() {
   // --- Renderizado ---
   return (
     <View style={styles.container}>
-      {/* Header (Asumiendo que _layout podría añadir uno, o lo ponemos aquí) */}
-       <View style={styles.header}>
-         <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
-            {/* Podríamos poner un icono de flecha atrás si quisiéramos */}
-             <Image
-               source={require('../../assets/images/LogoVigilIa2.png')}
-               style={styles.logo}
-               resizeMode="contain"
-             />
-         </Pressable>
-         <Text style={styles.titleHeader}>Historial de Alertas</Text>
-       </View>
+      {/* Header con el componente reutilizable */}
+      <Header
+        title="Historial de Alertas"
+        backgroundColor="#6366f1"
+        icon={<Bell size={28} color="#fff" />}
+      />
 
       {isLoading ? (
         <View style={styles.centerContainer}><ActivityIndicator size="large" color="#1e3a8a" /></View>
@@ -201,24 +196,7 @@ export default function AlertasScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9fafb' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-   errorText: { color: 'red', textAlign: 'center', marginBottom: 10 },
-  header: {
-    position: 'relative',        
-    alignItems: 'center',        
-    justifyContent: 'center',
-    backgroundColor: '#6366f1', // Morado claro
-    paddingVertical: 20, // Un poco menos padding
-    paddingHorizontal: 20,
-    // Quitamos border radius si es una pantalla completa
-  },
-  logo: { // Ajustamos posición del logo en header
-    position: 'absolute',
-    left: 15, // Más cerca del borde
-    top: 15, // Ajusta según sea necesario
-    width: 40,
-    height: 40,
-  },   
-  titleHeader: { fontSize: 22, fontWeight: 'bold', color: 'white', textAlign: 'center' }, // Ligeramente más pequeño
+  errorText: { color: 'red', textAlign: 'center', marginBottom: 10 },
   mainContent: { padding: 20 },
   noAlerts: { textAlign: 'center', color: '#6b7280', fontSize: 16, marginTop: 40 },
   card: {

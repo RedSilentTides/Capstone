@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable,
-    Platform, Image, Button, TextInput, Modal, FlatList
+    Platform, Button, TextInput, Modal, FlatList
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios, { AxiosError } from 'axios';
@@ -9,6 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PlusCircle, Calendar, Clock, Repeat, Trash2, Edit2 } from 'lucide-react-native';
 import { useAuth } from '../_layout';
+import Header from '../../components/Header';
 // Descomenta si instalaste el Date Time Picker
 // import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 // Descomenta si instalaste el Picker Select
@@ -311,15 +312,15 @@ export default function RecordatoriosScreen() {
   // --- Renderizado ---
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
-          <Image source={require('../../assets/images/LogoVigilIa2.png')} style={styles.logo} resizeMode="contain"/>
-        </Pressable>
-        <Text style={styles.titleHeader}>Recordatorios</Text>
+      {/* Header con botón de añadir */}
+      <View style={styles.headerContainer}>
+        <Header
+          title="Gestión de Recordatorios"
+          backgroundColor="#8b5cf6"
+          icon={<Calendar size={28} color="#fff" />}
+        />
         <Pressable onPress={openAddModal} style={styles.addButton} disabled={!selectedAdultoMayorId}>
-            <PlusCircle size={28} color={selectedAdultoMayorId ? "white" : "#a5b4fc"} /> 
-            {/* Botón deshabilitado si no hay AM */}
+          <PlusCircle size={32} color={selectedAdultoMayorId ? "#8b5cf6" : "#d1d5db"} />
         </Pressable>
       </View>
 
@@ -473,22 +474,26 @@ export default function RecordatoriosScreen() {
 
 // --- Estilos --- (Añadimos/ajustamos estilos para modal y componentes)
 const styles = StyleSheet.create({
-  // ... (estilos de container, centerContainer, errorText, header, logo, titleHeader se mantienen) ...
   container: { flex: 1, backgroundColor: '#f9fafb' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   errorText: { color: 'red', textAlign: 'center', marginBottom: 10 },
-  header: {
-    position: 'relative',        
-    flexDirection: 'row', 
-    alignItems: 'center',        
-    justifyContent: 'center', 
-    backgroundColor: '#8b5cf6', 
-    paddingVertical: 15, 
-    paddingHorizontal: 15,
+  headerContainer: {
+    position: 'relative',
   },
-  logo: { width: 40, height: 40, position: 'absolute', left: 15, top: 15 },   
-  titleHeader: { fontSize: 22, fontWeight: 'bold', color: 'white', textAlign: 'center' }, 
-  addButton: { position: 'absolute', right: 15, top: 18 }, 
+  addButton: {
+    position: 'absolute',
+    right: 20,
+    top: 17,
+    zIndex: 1002,
+    backgroundColor: '#fff',
+    borderRadius: 50,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 5,
+  }, 
   pickerContainer: { 
       padding: 15, 
       backgroundColor: '#e5e7eb',

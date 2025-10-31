@@ -56,7 +56,7 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
               text="Mi Perfil"
               onPress={() => {
                 onClose();
-                router.push('/profile');
+                router.push('/perfil');
               }}
             />
             <MenuItem
@@ -64,7 +64,7 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
               text="Alertas"
               onPress={() => {
                 onClose();
-                router.push('/alerts');
+                router.push('/cuidador/alertas');
               }}
             />
             <MenuItem
@@ -72,7 +72,7 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
               text="Recordatorios"
               onPress={() => {
                 onClose();
-                router.push('/reminders');
+                router.push('/cuidador/recordatorios');
               }}
             />
             <MenuItem
@@ -80,7 +80,7 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
               text="Configuración"
               onPress={() => {
                 onClose();
-                router.push('/settings');
+                router.push('/cuidador/configuracion');
               }}
             />
             <MenuItem
@@ -88,7 +88,7 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
               text="Ayuda"
               onPress={() => {
                 onClose();
-                router.push('/help');
+                router.push('/ayuda');
               }}
             />
           </ScrollView>

@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-// Importamos Image para el logo
-import { View, Text, Pressable, Image, StyleSheet, ScrollView } from "react-native"; 
+import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-// Importamos iconos si queremos añadirlos
-import { HelpCircle, ChevronDown, ChevronUp, Phone, Mail } from 'lucide-react-native'; 
+import { HelpCircle, ChevronDown, ChevronUp, Phone, Mail } from 'lucide-react-native';
+import Header from '../components/Header'; 
 
 export default function HelpScreen() { // Renombrado para claridad
   const router = useRouter();
@@ -11,19 +10,12 @@ export default function HelpScreen() { // Renombrado para claridad
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header Consistente */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.backButton}>
-             {/* Podríamos usar un icono de flecha atrás o el logo */}
-             <Image source={require("../assets/images/LogoVigilIa2.png")} style={styles.logo} />
-         </Pressable>
-         <View style={styles.headerCenter}>
-             {/* <HelpCircle size={28} color="#fff" style={{ marginRight: 8 }} /> */}
-             <Text style={styles.title}>Ayuda y Soporte</Text>
-         </View>
-         {/* Espacio para centrar el título si usas backButton */}
-         <View style={{ width: 40 }}/> 
-      </View>
+      {/* Header con el componente reutilizable */}
+      <Header
+        title="Ayuda y Soporte"
+        backgroundColor="#8b5cf6"
+        icon={<HelpCircle size={28} color="#fff" />}
+      />
 
       {/* Sección Centro de ayuda (Desplegable) */}
       <View style={styles.section}>
@@ -85,16 +77,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f9fafb", // Fondo general
   },
-   header: { // Header similar a Profile
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between", 
-    backgroundColor: "#8b5cf6", // Mismo color morado
-    paddingVertical: 15, paddingHorizontal: 15, 
-    // Quitamos marginBottom si queremos que el contenido empiece justo debajo
-  },
-  backButton: { padding: 5 }, 
-  logo: { width: 40, height: 40, resizeMode: 'contain' }, 
-  headerCenter: { flexDirection: "row", alignItems: "center" },
-  title: { fontSize: 22, fontWeight: "700", color: "#fff" }, // Título consistente
   section: {
     borderRadius: 8,
     backgroundColor: "#fff",

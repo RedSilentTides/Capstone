@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-    View, Text, StyleSheet, ActivityIndicator, Button, 
-    Pressable, ScrollView, Platform 
+import {
+    View, Text, StyleSheet, ActivityIndicator, Button,
+    Pressable, ScrollView, Platform
 } from 'react-native';
-import { useRouter } from 'expo-router'; // Correcto para Expo Router v2+
+import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import axios from 'axios'; 
+import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// --- Importa el hook useAuth desde _layout ---
-import { useAuth } from './_layout'; 
-import { Info, AlertTriangle, CheckCircle, Bell } from 'lucide-react-native';
+import { useAuth } from './_layout';
+import { Info, AlertTriangle, CheckCircle, Bell, Menu } from 'lucide-react-native';
+import SlidingPanel from '../components/SlidingPanel';
+import Header from '../components/Header';
 
 // URL del backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -78,11 +79,12 @@ function AlertPreviewCard({ alert }: { alert: AlertItem }) {
 // --- Pantalla Principal ---
 export default function IndexScreen() {
   // Obtenemos estado y función del contexto de autenticación
-  const { isAuthenticated, setAuthState, isLoading: isAuthLoading } = useAuth(); 
-  
+  const { isAuthenticated, setAuthState, isLoading: isAuthLoading } = useAuth();
+
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true); 
+  const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const router = useRouter(); 
 
   // Datos de ejemplo para alertas (se buscarán de API más adelante)
@@ -209,10 +211,25 @@ export default function IndexScreen() {
 
   // Si está autenticado y tenemos el perfil, mostramos el dashboard correcto
   // No necesitamos verificar 'isAuthenticated' aquí porque _layout ya nos habría redirigido si fuera false
-  if (userProfile) { 
+  if (userProfile) {
     return (
-      <ScrollView style={styles.container}>
-        <Text style={styles.welcome}>¡Bienvenido, {userProfile.nombre}!</Text>
+      <View style={{ flex: 1 }}>
+        {/* Botón de menú flotante */}
+        {!isPanelOpen && (
+          <Pressable style={styles.menuButton} onPress={() => setIsPanelOpen(true)}>
+            <Menu size={28} color="#111827" />
+          </Pressable>
+        )}
+
+        {/* Header con logo */}
+        <Header
+          title="VigilIA"
+          backgroundColor="#2563eb"
+          showBackButton={false}
+        />
+
+        <ScrollView style={styles.container}>
+          <Text style={styles.welcome}>¡Bienvenido, {userProfile.nombre}!</Text>
         
         {/* --- Dashboard del Cuidador --- */}
         {userProfile.rol === 'cuidador' && (
@@ -221,15 +238,15 @@ export default function IndexScreen() {
             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/configuracion')}>
               <Text style={styles.buttonText}>Configurar Notificaciones</Text>
             </Pressable>
-            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/recordatorios')}>
+            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => alert('Próximamente: Gestionar Recordatorios')}>
               <Text style={styles.buttonText}>Gestionar Recordatorios</Text>
             </Pressable>
-             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/personas')}>
+             {/* <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => alert('Próximamente: Gestionar Personas Cuidadas')}>
               <Text style={styles.buttonText}>Gestionar Personas Cuidadas</Text>
             </Pressable>
-             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/dispositivos')}>
+             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => alert('Próximamente: Gestionar Dispositivos')}>
               <Text style={styles.buttonText}>Gestionar Dispositivos</Text>
-            </Pressable>
+            </Pressable> */}
 
 
             <Text style={styles.sectionTitle}>Últimas Alertas</Text>
@@ -276,7 +293,15 @@ export default function IndexScreen() {
         <Pressable style={styles.logoutButton} onPress={handleLogout}>
            <Text style={styles.buttonText}>Cerrar Sesión</Text>
         </Pressable>
-      </ScrollView>
+        </ScrollView>
+
+        {/* Panel lateral */}
+        {isPanelOpen && (
+          <View style={StyleSheet.absoluteFill}>
+            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+          </View>
+        )}
+      </View>
     );
   }
 
@@ -293,8 +318,22 @@ export default function IndexScreen() {
 // Estilos (Añadí borde izquierdo a AlertPreviewCard)
 const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f0f4f8' },
-  container: { flex: 1, padding: 20, backgroundColor: '#f0f4f8' },
-  welcome: { fontSize: 24, fontWeight: 'bold', marginBottom: 5, textAlign: 'center', color: '#1e3a8a' },
+  container: { flex: 1, padding: 20, paddingTop: 10, backgroundColor: '#f0f4f8' },
+  menuButton: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    zIndex: 1001,
+    backgroundColor: '#f3f4f6',
+    padding: 10,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  welcome: { fontSize: 24, fontWeight: 'bold', marginBottom: 5, marginTop: 10, textAlign: 'center', color: '#1e3a8a' },
   sectionTitle: { fontSize: 20, fontWeight: '600', marginTop: 25, marginBottom: 15, color: '#111827', borderBottomWidth: 1, borderBottomColor: '#d1d5db', paddingBottom: 5 },
   errorText: { color: 'red', fontSize: 16, textAlign: 'center', marginBottom: 20 },
   actionButton: { paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginBottom: 10, flexDirection: 'row', justifyContent: 'center' },
