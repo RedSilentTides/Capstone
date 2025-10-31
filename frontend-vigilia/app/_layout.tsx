@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, View, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
 // Ruta actualizada al componente
-import SlidingPanel from '../components/SlidingPanel';
+import SlidingPanel from '../components/Slidingpanel';
 import { Menu } from 'lucide-react-native';
 
 // --- Contexto de Autenticación ---

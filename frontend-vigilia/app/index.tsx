@@ -9,7 +9,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './_layout';
 import { Info, AlertTriangle, CheckCircle, Bell, Menu } from 'lucide-react-native';
-import SlidingPanel from '../components/SlidingPanel';
+import SlidingPanel from '../components/Slidingpanel';
 import Header from '../components/Header';
 
 // URL del backend
