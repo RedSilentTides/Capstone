@@ -301,7 +301,7 @@ export default function IndexScreen() {
             </Pressable>
 
             <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
-            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/configuracion')}>
+            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/configuracion')}>
               <Text style={styles.buttonText}>Configurar Notificaciones</Text>
             </Pressable>
             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/recordatorios')}>

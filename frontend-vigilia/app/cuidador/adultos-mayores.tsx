@@ -8,7 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Header from '../../components/Header';
-import { User, UserPlus, Calendar, MapPin, FileText } from 'lucide-react-native';
+import { User, UserPlus, Calendar, MapPin, FileText, Bell } from 'lucide-react-native';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -149,6 +149,19 @@ export default function AdultosMayoresScreen() {
                 <Text style={styles.footerText}>
                     Registrado: {formatFecha(adulto.fecha_registro)}
                 </Text>
+                <Pressable
+                    style={styles.recordatoriosButton}
+                    onPress={(e) => {
+                        e.stopPropagation();
+                        router.push({
+                            pathname: '/cuidador/recordatorios',
+                            params: { adulto_mayor_id: adulto.id, nombre: adulto.nombre_completo }
+                        });
+                    }}
+                >
+                    <Bell size={16} color="#7c3aed" />
+                    <Text style={styles.recordatoriosButtonText}>Recordatorios</Text>
+                </Pressable>
             </View>
         </Pressable>
     );
@@ -351,9 +364,26 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: '#e5e7eb',
         paddingTop: 8,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
     },
     footerText: {
         fontSize: 12,
         color: '#9ca3af',
+    },
+    recordatoriosButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f3e8ff',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+        gap: 6,
+    },
+    recordatoriosButtonText: {
+        fontSize: 13,
+        color: '#7c3aed',
+        fontWeight: '600',
     },
 });

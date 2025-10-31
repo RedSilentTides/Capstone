@@ -436,10 +436,6 @@ def get_alert_configuration(current_user: dict = Depends(get_current_user)):
     user_uid = current_user.get("uid")
     # Primero, obtenemos el rol desde nuestra BD para verificar permiso
     user_info = read_users_me(current_user) # Reutilizamos la función anterior
-    
-    if user_info.rol not in ['cuidador', 'administrador']:
-        print(f"Acceso denegado a /configuracion/ para usuario {user_uid} con rol {user_info.rol}")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido para este rol de usuario.")
 
     print(f"Obteniendo configuración para usuario_id: {user_info.id} (firebase_uid: {user_uid})")
     try:
@@ -479,10 +475,6 @@ def update_alert_configuration(config: AlertConfigUpdate, current_user: dict = D
     user_uid = current_user.get("uid")
     # Obtenemos info y rol del usuario
     user_info = read_users_me(current_user) 
-    
-    if user_info.rol not in ['cuidador', 'administrador']:
-        print(f"Acceso denegado a PUT /configuracion/ para usuario {user_uid} con rol {user_info.rol}")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido para este rol de usuario.")
     
     # Prepara los campos a actualizar
     update_fields = config.model_dump(exclude_unset=True) # Solo actualiza campos enviados

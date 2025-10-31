@@ -80,7 +80,7 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
               text="Configuración"
               onPress={() => {
                 onClose();
-                router.push('/cuidador/configuracion');
+                router.push('/configuracion');
               }}
             />
             <MenuItem

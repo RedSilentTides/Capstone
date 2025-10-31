@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Switch, TextInput, Button, Alert, ActivityIndicator, ScrollView, Platform, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from '../_layout'; 
+import { useAuth } from './_layout'; 
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
+// URL del webhook de WhatsApp (desplegado en GCP)
+const WHATSAPP_WEBHOOK_URL = 'https://whatsapp-webhook-687053793381.southamerica-west1.run.app';
+const WHATSAPP_API_KEY = 'bfc79d65d767'; // IMPORTANTE: Cambia esto por el API_KEY que configuraste en GCP Secret Manager
 
 // Tipo para los datos de configuración que esperamos/enviamos
 interface AlertConfig {
@@ -28,6 +31,7 @@ export default function ConfiguracionScreen() {
   const [config, setConfig] = useState<Partial<AlertConfig>>({}); // Usamos Partial para estado inicial
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Función reutilizable para obtener el token
@@ -86,6 +90,56 @@ export default function ConfiguracionScreen() {
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]); // fetchConfig está envuelta en useCallback
+
+  // Función para enviar mensaje de prueba de WhatsApp
+  const handleSendTestWhatsApp = async () => {
+    if (!config.numero_whatsapp) {
+      Alert.alert('Error', 'Por favor, ingresa un número de WhatsApp primero.');
+      return;
+    }
+
+    setIsSendingTest(true);
+
+    try {
+      console.log('Enviando mensaje de prueba a WhatsApp...');
+      const response = await axios.post(
+        `${WHATSAPP_WEBHOOK_URL}/send-template`,
+        {
+          to: config.numero_whatsapp.replace(/\+/g, ''), // Remover el + si existe
+          template_name: 'hello_world',
+          language_code: 'en_US'
+        },
+        {
+          headers: {
+            'X-API-Key': WHATSAPP_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data.status === 'sent') {
+        Alert.alert(
+          '✅ Mensaje Enviado',
+          `Se envió un mensaje de prueba a ${config.numero_whatsapp}. Revisa tu WhatsApp!`
+        );
+      }
+    } catch (err) {
+      console.error('Error al enviar mensaje de WhatsApp:', err);
+      let errorMessage = 'No se pudo enviar el mensaje de WhatsApp.';
+
+      if (axios.isAxiosError(err)) {
+        if (err.code === 'ECONNREFUSED' || err.message.includes('Network Error')) {
+          errorMessage = 'No se pudo conectar al servicio de WhatsApp. Verifica que esté desplegado.';
+        } else if (err.response?.data?.detail) {
+          errorMessage = err.response.data.detail;
+        }
+      }
+
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
 
   // Función para guardar los cambios
   const handleSaveChanges = async () => {
@@ -189,14 +243,25 @@ export default function ConfiguracionScreen() {
         />
       </View>
       {config.notificar_whatsapp && ( // Mostrar input solo si está activado
-        <TextInput
-          style={styles.input}
-          placeholder="Número de WhatsApp (ej. +569...)"
-          value={config.numero_whatsapp || ''}
-          onChangeText={(text) => setConfig(prev => ({ ...prev, numero_whatsapp: text }))}
-          keyboardType="phone-pad"
-          textContentType="telephoneNumber"
-        />
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="Número de WhatsApp (ej. 56957342441)"
+            value={config.numero_whatsapp || ''}
+            onChangeText={(text) => setConfig(prev => ({ ...prev, numero_whatsapp: text }))}
+            keyboardType="phone-pad"
+            textContentType="telephoneNumber"
+          />
+          <Pressable
+            style={[styles.testButton, isSendingTest && styles.buttonDisabled]}
+            onPress={handleSendTestWhatsApp}
+            disabled={isSendingTest}
+          >
+            <Text style={styles.testButtonText}>
+              {isSendingTest ? '📤 Enviando...' : '📱 Enviar Mensaje de Prueba'}
+            </Text>
+          </Pressable>
+        </>
       )}
       <Text style={styles.description}>Recibe mensajes de alerta urgentes vía WhatsApp.</Text>
 
@@ -299,6 +364,20 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  testButton: {
+    backgroundColor: '#25D366', // Color verde de WhatsApp
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#128C7E',
+  },
+  testButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
   },
    errorText: {
     color: 'red',

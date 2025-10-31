@@ -2,10 +2,10 @@ import React, { useState, useEffect, createContext, useContext, useCallback } fr
 import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform, View, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
+import { Platform, View, ActivityIndicator, StyleSheet } from 'react-native';
 // Ruta actualizada al componente
 import SlidingPanel from '../components/Slidingpanel';
-import { Menu } from 'lucide-react-native';
+import CustomHeader from '../components/CustomHeader';
 
 // --- Contexto de Autenticación ---
 type AuthContextType = {
@@ -130,12 +130,12 @@ function RootLayoutNav({
 
   return (
     // --- Renderizado Condicional del Stack ---
-    <Stack screenOptions={{ headerShown: false }}> 
+    <Stack>
       {!isAuthenticated ? (
         // Pantallas Públicas (si NO está autenticado)
         <>
-          <Stack.Screen name="login" options={{ title: 'Iniciar Sesión' }} />
-          <Stack.Screen name="register" options={{ title: 'Crear Cuenta' }} />
+          <Stack.Screen name="login" options={{ title: 'Iniciar Sesión', headerShown: false }} />
+          <Stack.Screen name="register" options={{ title: 'Crear Cuenta', headerShown: false }} />
         </>
       ) : (
         // Pantallas Privadas (si SÍ está autenticado)
@@ -143,20 +143,44 @@ function RootLayoutNav({
           <Stack.Screen
             name="index"
             options={{
-              headerShown: true, 
-              title: 'VigilIA Dashboard',
-              headerLeft: () => (
-                 <Pressable onPress={() => setIsPanelOpen(true)} style={{ marginLeft: 15 }}>
-                   <Menu size={24} color="#1f2937" /> 
-                 </Pressable>
-              ),
-            }} 
+              headerShown: true,
+              header: () => <CustomHeader title="VigilIA Dashboard" onMenuPress={() => setIsPanelOpen(true)} showBackButton={false} />,
+            }}
           />
-           <Stack.Screen name="perfil" options={{ title: 'Mi Perfil', headerShown: true }} />
-           <Stack.Screen name="ayuda" options={{ title: 'Ayuda', headerShown: true }} />
-           <Stack.Screen name="solicitudes" options={{ title: 'Solicitudes de Cuidado', headerShown: false }} />
-           {/* Rutas del cuidador */}
-           <Stack.Screen name="cuidador" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="perfil"
+            options={{
+              headerShown: true,
+              header: () => <CustomHeader title="Mi Perfil" onMenuPress={() => setIsPanelOpen(true)} />,
+            }}
+          />
+          <Stack.Screen
+            name="ayuda"
+            options={{
+              headerShown: true,
+              header: () => <CustomHeader title="Ayuda" onMenuPress={() => setIsPanelOpen(true)} />,
+            }}
+          />
+
+          {/* Configuración - accesible para todos los usuarios */}
+          <Stack.Screen
+            name="configuracion"
+            options={{
+              headerShown: true,
+              header: () => <CustomHeader title="Configuración de Notificaciones" onMenuPress={() => setIsPanelOpen(true)} />,
+            }}
+          />
+
+          <Stack.Screen
+            name="solicitudes"
+            options={{
+              headerShown: true,
+              header: () => <CustomHeader title="Solicitudes de Cuidado" onMenuPress={() => setIsPanelOpen(true)} />,
+            }}
+          />
+
+          {/* Rutas del cuidador (esta carpeta tendrá su propio _layout.tsx) */}
+          <Stack.Screen name="cuidador" options={{ headerShown: false }} />
         </>
       )}
     </Stack>
