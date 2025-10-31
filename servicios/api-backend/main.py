@@ -832,4 +832,567 @@ def delete_recordatorio(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
 
 # --- FIN DE ENDPOINTS DE RECORDATORIOS ---
+
+# --- MODELOS PARA SOLICITUDES DE CUIDADO ---
+class SolicitudCuidadoCreate(BaseModel):
+    email_destinatario: EmailStr
+    mensaje: str | None = None
+
+class SolicitudCuidadoInfo(BaseModel):
+    id: int
+    cuidador_id: int
+    email_destinatario: str
+    usuario_destinatario_id: int | None
+    estado: str
+    mensaje: str | None
+    fecha_solicitud: datetime
+    fecha_respuesta: datetime | None
+    # Información adicional del cuidador
+    nombre_cuidador: str | None = None
+    email_cuidador: str | None = None
+
+# --- MODELOS PARA ADULTOS MAYORES ---
+class AdultoMayorCreate(BaseModel):
+    nombre_completo: constr(min_length=1, max_length=150)
+    fecha_nacimiento: datetime | None = None
+    direccion: str | None = None
+    notas_relevantes: str | None = None
+
+class AdultoMayorUpdate(BaseModel):
+    nombre_completo: constr(min_length=1, max_length=150) | None = None
+    fecha_nacimiento: datetime | None = None
+    direccion: str | None = None
+    notas_relevantes: str | None = None
+
+class AdultoMayorInfo(BaseModel):
+    id: int
+    usuario_id: int | None
+    nombre_completo: str
+    fecha_nacimiento: datetime | None
+    direccion: str | None
+    notas_relevantes: str | None
+    token_fcm_app_adulto: str | None
+    fecha_registro: datetime
+
+# --- ENDPOINTS: /solicitudes-cuidado ---
+
+# POST /solicitudes-cuidado (Enviar solicitud)
+@app.post("/solicitudes-cuidado", response_model=SolicitudCuidadoInfo, status_code=status.HTTP_201_CREATED)
+def crear_solicitud_cuidado(
+    solicitud_data: SolicitudCuidadoCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Permite a un cuidador enviar una solicitud de cuidado a otro usuario por email.
+    """
+    user_info = read_users_me(current_user)
+
+    # Solo cuidadores pueden enviar solicitudes
+    if user_info.rol != 'cuidador':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo los cuidadores pueden enviar solicitudes de cuidado.")
+
+    print(f"Cuidador {user_info.id} ({user_info.email}) enviando solicitud a {solicitud_data.email_destinatario}")
+
+    # Verificar que no se envíe solicitud a sí mismo
+    if solicitud_data.email_destinatario.lower() == user_info.email.lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No puedes enviarte una solicitud a ti mismo.")
+
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            try:
+                # Buscar si el destinatario existe
+                query_check_user = text("SELECT id FROM usuarios WHERE email = :email")
+                destinatario = db_conn.execute(query_check_user, {"email": solicitud_data.email_destinatario}).fetchone()
+
+                destinatario_id = destinatario[0] if destinatario else None
+
+                # Verificar si ya existe una solicitud pendiente
+                if destinatario_id:
+                    query_check_existing = text("""
+                        SELECT id FROM solicitudes_cuidado
+                        WHERE cuidador_id = :cuidador_id
+                        AND usuario_destinatario_id = :destinatario_id
+                        AND estado = 'pendiente'
+                    """)
+                    existing = db_conn.execute(query_check_existing, {
+                        "cuidador_id": user_info.id,
+                        "destinatario_id": destinatario_id
+                    }).fetchone()
+
+                    if existing:
+                        trans.rollback()
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Ya existe una solicitud pendiente para este usuario."
+                        )
+
+                # Crear la solicitud
+                query = text("""
+                    INSERT INTO solicitudes_cuidado
+                    (cuidador_id, email_destinatario, usuario_destinatario_id, mensaje, estado)
+                    VALUES (:cuidador_id, :email, :destinatario_id, :mensaje, 'pendiente')
+                    RETURNING id, cuidador_id, email_destinatario, usuario_destinatario_id, estado, mensaje, fecha_solicitud, fecha_respuesta
+                """)
+
+                result = db_conn.execute(query, {
+                    "cuidador_id": user_info.id,
+                    "email": solicitud_data.email_destinatario,
+                    "destinatario_id": destinatario_id,
+                    "mensaje": solicitud_data.mensaje
+                }).fetchone()
+
+                if not result:
+                    trans.rollback()
+                    raise Exception("INSERT no devolvió la solicitud creada.")
+
+                trans.commit()
+                print(f"✅ Solicitud creada con ID: {result._mapping['id']}")
+
+                # Agregar información del cuidador
+                response_data = dict(result._mapping)
+                response_data['nombre_cuidador'] = user_info.nombre
+                response_data['email_cuidador'] = user_info.email
+
+                return SolicitudCuidadoInfo(**response_data)
+
+            except HTTPException as http_exc:
+                trans.rollback()
+                raise http_exc
+            except Exception as e_db:
+                print(f"--- ERROR AL CREAR SOLICITUD (DB) ---")
+                print(f"ERROR: {str(e_db)}")
+                trans.rollback()
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e_db)}")
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"--- ERROR INESPERADO AL CREAR SOLICITUD ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+
+# GET /solicitudes-cuidado/recibidas (Ver solicitudes recibidas)
+@app.get("/solicitudes-cuidado/recibidas", response_model=list[SolicitudCuidadoInfo])
+def obtener_solicitudes_recibidas(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Obtiene las solicitudes de cuidado recibidas por el usuario autenticado.
+    """
+    user_info = read_users_me(current_user)
+
+    print(f"Obteniendo solicitudes recibidas para usuario {user_info.id}")
+
+    try:
+        with engine.connect() as db_conn:
+            query = text("""
+                SELECT
+                    sc.id, sc.cuidador_id, sc.email_destinatario,
+                    sc.usuario_destinatario_id, sc.estado, sc.mensaje,
+                    sc.fecha_solicitud, sc.fecha_respuesta,
+                    u.nombre as nombre_cuidador,
+                    u.email as email_cuidador
+                FROM solicitudes_cuidado sc
+                JOIN usuarios u ON sc.cuidador_id = u.id
+                WHERE sc.usuario_destinatario_id = :user_id
+                ORDER BY sc.fecha_solicitud DESC
+            """)
+
+            results = db_conn.execute(query, {"user_id": user_info.id}).fetchall()
+
+            print(f"✅ Encontradas {len(results)} solicitudes recibidas.")
+
+            solicitudes = [SolicitudCuidadoInfo(**row._mapping) for row in results]
+            return solicitudes
+
+    except Exception as e:
+        print(f"--- ERROR AL OBTENER SOLICITUDES RECIBIDAS ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
+
+
+# GET /solicitudes-cuidado/enviadas (Ver solicitudes enviadas)
+@app.get("/solicitudes-cuidado/enviadas", response_model=list[SolicitudCuidadoInfo])
+def obtener_solicitudes_enviadas(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Obtiene las solicitudes de cuidado enviadas por el cuidador autenticado.
+    """
+    user_info = read_users_me(current_user)
+
+    if user_info.rol != 'cuidador':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo los cuidadores pueden ver solicitudes enviadas.")
+
+    print(f"Obteniendo solicitudes enviadas por cuidador {user_info.id}")
+
+    try:
+        with engine.connect() as db_conn:
+            query = text("""
+                SELECT
+                    sc.id, sc.cuidador_id, sc.email_destinatario,
+                    sc.usuario_destinatario_id, sc.estado, sc.mensaje,
+                    sc.fecha_solicitud, sc.fecha_respuesta,
+                    u.nombre as nombre_cuidador,
+                    u.email as email_cuidador
+                FROM solicitudes_cuidado sc
+                JOIN usuarios u ON sc.cuidador_id = u.id
+                WHERE sc.cuidador_id = :cuidador_id
+                ORDER BY sc.fecha_solicitud DESC
+            """)
+
+            results = db_conn.execute(query, {"cuidador_id": user_info.id}).fetchall()
+
+            print(f"✅ Encontradas {len(results)} solicitudes enviadas.")
+
+            solicitudes = [SolicitudCuidadoInfo(**row._mapping) for row in results]
+            return solicitudes
+
+    except Exception as e:
+        print(f"--- ERROR AL OBTENER SOLICITUDES ENVIADAS ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
+
+
+# PUT /solicitudes-cuidado/{solicitud_id}/aceptar (Aceptar solicitud)
+@app.put("/solicitudes-cuidado/{solicitud_id}/aceptar", response_model=SolicitudCuidadoInfo)
+def aceptar_solicitud_cuidado(
+    solicitud_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Acepta una solicitud de cuidado. Esto hace:
+    1. Cambia el rol del usuario a 'adulto_mayor'
+    2. Crea un registro en 'adultos_mayores'
+    3. Crea la relación en 'cuidadores_adultos_mayores'
+    4. Marca la solicitud como 'aceptada'
+    """
+    user_info = read_users_me(current_user)
+
+    print(f"Usuario {user_info.id} intentando aceptar solicitud {solicitud_id}")
+
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            try:
+                # 1. Verificar que la solicitud existe y es para este usuario
+                query_check = text("""
+                    SELECT cuidador_id, usuario_destinatario_id, estado
+                    FROM solicitudes_cuidado
+                    WHERE id = :id
+                """)
+                solicitud = db_conn.execute(query_check, {"id": solicitud_id}).fetchone()
+
+                if not solicitud:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solicitud no encontrada.")
+
+                if solicitud._mapping['usuario_destinatario_id'] != user_info.id:
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta solicitud no es para ti.")
+
+                if solicitud._mapping['estado'] != 'pendiente':
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Esta solicitud ya fue {solicitud._mapping['estado']}.")
+
+                cuidador_id = solicitud._mapping['cuidador_id']
+
+                # 2. Cambiar el rol del usuario a 'adulto_mayor'
+                query_update_rol = text("""
+                    UPDATE usuarios
+                    SET rol = 'adulto_mayor'
+                    WHERE id = :id
+                """)
+                db_conn.execute(query_update_rol, {"id": user_info.id})
+                print(f"✅ Rol actualizado a 'adulto_mayor' para usuario {user_info.id}")
+
+                # 3. Crear registro en adultos_mayores (si no existe)
+                query_check_am = text("SELECT id FROM adultos_mayores WHERE usuario_id = :id")
+                am_exists = db_conn.execute(query_check_am, {"id": user_info.id}).fetchone()
+
+                if am_exists:
+                    adulto_mayor_id = am_exists[0]
+                    print(f"ℹ️ Adulto mayor ya existía con ID: {adulto_mayor_id}")
+                else:
+                    query_create_am = text("""
+                        INSERT INTO adultos_mayores (usuario_id, nombre_completo)
+                        VALUES (:usuario_id, :nombre)
+                        RETURNING id
+                    """)
+                    am_result = db_conn.execute(query_create_am, {
+                        "usuario_id": user_info.id,
+                        "nombre": user_info.nombre
+                    }).fetchone()
+                    adulto_mayor_id = am_result[0]
+                    print(f"✅ Registro de adulto mayor creado con ID: {adulto_mayor_id}")
+
+                # 4. Crear relación en cuidadores_adultos_mayores
+                query_create_relation = text("""
+                    INSERT INTO cuidadores_adultos_mayores (usuario_id, adulto_mayor_id)
+                    VALUES (:cuidador_id, :adulto_mayor_id)
+                    ON CONFLICT (usuario_id, adulto_mayor_id) DO NOTHING
+                """)
+                db_conn.execute(query_create_relation, {
+                    "cuidador_id": cuidador_id,
+                    "adulto_mayor_id": adulto_mayor_id
+                })
+                print(f"✅ Relación creada: cuidador {cuidador_id} -> adulto mayor {adulto_mayor_id}")
+
+                # 5. Obtener info del cuidador ANTES de actualizar solicitud
+                query_cuidador = text("SELECT nombre, email FROM usuarios WHERE id = :id")
+                cuidador_info = db_conn.execute(query_cuidador, {"id": cuidador_id}).fetchone()
+
+                # 6. Actualizar la solicitud a 'aceptada'
+                query_update_solicitud = text("""
+                    UPDATE solicitudes_cuidado
+                    SET estado = 'aceptada', fecha_respuesta = NOW()
+                    WHERE id = :id
+                    RETURNING id, cuidador_id, email_destinatario, usuario_destinatario_id,
+                              estado, mensaje, fecha_solicitud, fecha_respuesta
+                """)
+                result = db_conn.execute(query_update_solicitud, {"id": solicitud_id}).fetchone()
+
+                trans.commit()
+                print(f"✅ Solicitud {solicitud_id} aceptada exitosamente")
+
+                # Preparar respuesta
+                response_data = dict(result._mapping)
+                response_data['nombre_cuidador'] = cuidador_info._mapping['nombre']
+                response_data['email_cuidador'] = cuidador_info._mapping['email']
+
+                return SolicitudCuidadoInfo(**response_data)
+
+            except HTTPException as http_exc:
+                trans.rollback()
+                raise http_exc
+            except Exception as e_db:
+                print(f"--- ERROR AL ACEPTAR SOLICITUD (DB) ---")
+                print(f"ERROR: {str(e_db)}")
+                trans.rollback()
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e_db)}")
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"--- ERROR INESPERADO AL ACEPTAR SOLICITUD ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+
+# PUT /solicitudes-cuidado/{solicitud_id}/rechazar (Rechazar solicitud)
+@app.put("/solicitudes-cuidado/{solicitud_id}/rechazar", response_model=SolicitudCuidadoInfo)
+def rechazar_solicitud_cuidado(
+    solicitud_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Rechaza una solicitud de cuidado.
+    """
+    user_info = read_users_me(current_user)
+
+    print(f"Usuario {user_info.id} intentando rechazar solicitud {solicitud_id}")
+
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            try:
+                # Verificar que la solicitud existe y es para este usuario
+                query_check = text("""
+                    SELECT cuidador_id, usuario_destinatario_id, estado
+                    FROM solicitudes_cuidado
+                    WHERE id = :id
+                """)
+                solicitud = db_conn.execute(query_check, {"id": solicitud_id}).fetchone()
+
+                if not solicitud:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solicitud no encontrada.")
+
+                if solicitud._mapping['usuario_destinatario_id'] != user_info.id:
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta solicitud no es para ti.")
+
+                if solicitud._mapping['estado'] != 'pendiente':
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Esta solicitud ya fue {solicitud._mapping['estado']}.")
+
+                cuidador_id = solicitud._mapping['cuidador_id']
+
+                # Obtener info del cuidador ANTES de actualizar
+                query_cuidador = text("SELECT nombre, email FROM usuarios WHERE id = :id")
+                cuidador_info = db_conn.execute(query_cuidador, {"id": cuidador_id}).fetchone()
+
+                # Actualizar la solicitud a 'rechazada'
+                query_update = text("""
+                    UPDATE solicitudes_cuidado
+                    SET estado = 'rechazada', fecha_respuesta = NOW()
+                    WHERE id = :id
+                    RETURNING id, cuidador_id, email_destinatario, usuario_destinatario_id,
+                              estado, mensaje, fecha_solicitud, fecha_respuesta
+                """)
+                result = db_conn.execute(query_update, {"id": solicitud_id}).fetchone()
+
+                trans.commit()
+                print(f"✅ Solicitud {solicitud_id} rechazada")
+
+                # Preparar respuesta
+                response_data = dict(result._mapping)
+                response_data['nombre_cuidador'] = cuidador_info._mapping['nombre']
+                response_data['email_cuidador'] = cuidador_info._mapping['email']
+
+                return SolicitudCuidadoInfo(**response_data)
+
+            except HTTPException as http_exc:
+                trans.rollback()
+                raise http_exc
+            except Exception as e_db:
+                print(f"--- ERROR AL RECHAZAR SOLICITUD (DB) ---")
+                print(f"ERROR: {str(e_db)}")
+                trans.rollback()
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e_db)}")
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"--- ERROR INESPERADO AL RECHAZAR SOLICITUD ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+
+# --- ENDPOINTS: /adultos-mayores ---
+
+# GET /adultos-mayores (Listar adultos mayores del cuidador)
+@app.get("/adultos-mayores", response_model=list[AdultoMayorInfo])
+def obtener_adultos_mayores(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Obtiene la lista de adultos mayores asignados al cuidador autenticado.
+    """
+    user_info = read_users_me(current_user)
+
+    if user_info.rol not in ['cuidador', 'administrador']:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
+
+    print(f"Obteniendo adultos mayores para cuidador {user_info.id}")
+
+    try:
+        with engine.connect() as db_conn:
+            query = text("""
+                SELECT am.*
+                FROM adultos_mayores am
+                JOIN cuidadores_adultos_mayores cam ON am.id = cam.adulto_mayor_id
+                WHERE cam.usuario_id = :cuidador_id
+                ORDER BY am.nombre_completo ASC
+            """)
+
+            results = db_conn.execute(query, {"cuidador_id": user_info.id}).fetchall()
+
+            print(f"✅ Encontrados {len(results)} adultos mayores.")
+
+            adultos = [AdultoMayorInfo(**row._mapping) for row in results]
+            return adultos
+
+    except Exception as e:
+        print(f"--- ERROR AL OBTENER ADULTOS MAYORES ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
+
+
+# GET /adultos-mayores/{id} (Ver detalles de un adulto mayor)
+@app.get("/adultos-mayores/{adulto_mayor_id}", response_model=AdultoMayorInfo)
+def obtener_adulto_mayor(
+    adulto_mayor_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Obtiene los detalles de un adulto mayor específico.
+    """
+    user_info = read_users_me(current_user)
+
+    if user_info.rol not in ['cuidador', 'administrador']:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
+
+    print(f"Obteniendo detalles del adulto mayor {adulto_mayor_id} para cuidador {user_info.id}")
+
+    try:
+        with engine.connect() as db_conn:
+            # Verificar permiso
+            check_caregiver_relationship(db_conn, user_info.id, adulto_mayor_id)
+
+            query = text("SELECT * FROM adultos_mayores WHERE id = :id")
+            result = db_conn.execute(query, {"id": adulto_mayor_id}).fetchone()
+
+            if not result:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Adulto mayor no encontrado.")
+
+            print(f"✅ Adulto mayor encontrado: {result._mapping['nombre_completo']}")
+            return AdultoMayorInfo(**result._mapping)
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"--- ERROR AL OBTENER ADULTO MAYOR ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
+
+
+# PUT /adultos-mayores/{id} (Actualizar adulto mayor)
+@app.put("/adultos-mayores/{adulto_mayor_id}", response_model=AdultoMayorInfo)
+def actualizar_adulto_mayor(
+    adulto_mayor_id: int,
+    adulto_data: AdultoMayorUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Actualiza la información de un adulto mayor.
+    """
+    user_info = read_users_me(current_user)
+
+    if user_info.rol not in ['cuidador', 'administrador']:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
+
+    # Prepara campos a actualizar
+    update_fields = adulto_data.model_dump(exclude_unset=True)
+    if not update_fields:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
+
+    set_clause = ", ".join([f"{key} = :{key}" for key in update_fields.keys()])
+    params = {**update_fields, "adulto_mayor_id": adulto_mayor_id, "cuidador_id": user_info.id}
+
+    query = text(f"""
+        UPDATE adultos_mayores
+        SET {set_clause}
+        WHERE id = :adulto_mayor_id
+        AND id IN (
+            SELECT cam.adulto_mayor_id
+            FROM cuidadores_adultos_mayores cam
+            WHERE cam.usuario_id = :cuidador_id
+        )
+        RETURNING *
+    """)
+
+    print(f"Actualizando adulto mayor {adulto_mayor_id} por cuidador {user_info.id}")
+
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            result = db_conn.execute(query, params).fetchone()
+            trans.commit()
+
+            if not result:
+                # Verificar si existe pero no tiene permiso
+                check_exists = text("SELECT id FROM adultos_mayores WHERE id = :id")
+                exists = db_conn.execute(check_exists, {"id": adulto_mayor_id}).fetchone()
+                if exists:
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permiso para modificar este adulto mayor.")
+                else:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Adulto mayor no encontrado.")
+
+            print(f"✅ Adulto mayor {adulto_mayor_id} actualizado")
+            return AdultoMayorInfo(**result._mapping)
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"--- ERROR AL ACTUALIZAR ADULTO MAYOR ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
+
 # --- FIN DE ENDPOINTS ---

@@ -154,6 +154,7 @@ function RootLayoutNav({
           />
            <Stack.Screen name="perfil" options={{ title: 'Mi Perfil', headerShown: true }} />
            <Stack.Screen name="ayuda" options={{ title: 'Ayuda', headerShown: true }} />
+           <Stack.Screen name="solicitudes" options={{ title: 'Solicitudes de Cuidado', headerShown: false }} />
            {/* Rutas del cuidador */}
            <Stack.Screen name="cuidador" options={{ headerShown: false }} />
         </>

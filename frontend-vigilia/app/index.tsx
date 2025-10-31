@@ -3,12 +3,12 @@ import {
     View, Text, StyleSheet, ActivityIndicator, Button,
     Pressable, ScrollView, Platform
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './_layout';
-import { Info, AlertTriangle, CheckCircle, Bell, Menu } from 'lucide-react-native';
+import { Info, AlertTriangle, CheckCircle, Bell, Menu, UserPlus, Users } from 'lucide-react-native';
 import SlidingPanel from '../components/Slidingpanel';
 import Header from '../components/Header';
 
@@ -85,10 +85,11 @@ export default function IndexScreen() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const router = useRouter(); 
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
+  const router = useRouter();
 
   // Datos de ejemplo para alertas (se buscarán de API más adelante)
-  const [previewAlerts, setPreviewAlerts] = useState<AlertItem[]>([
+  const [previewAlerts] = useState<AlertItem[]>([
       { id: '1', type: 'error', title: 'Caída Detectada', message: 'Posible caída en Salón Principal', timestamp: new Date(Date.now() - 3600000), read: false },
       { id: '2', type: 'info', title: 'Recordatorio', message: 'Tomar medicamento presión', timestamp: new Date(Date.now() - 7200000), read: true },
   ]); 
@@ -99,6 +100,23 @@ export default function IndexScreen() {
      if (Platform.OS === 'web') return await AsyncStorage.getItem(tokenKey);
      else return await SecureStore.getItemAsync(tokenKey);
   }, []);
+
+  // Función para obtener solicitudes pendientes
+  const fetchSolicitudesPendientes = useCallback(async (token?: string) => {
+    try {
+      const authToken = token || await getToken();
+      if (!authToken) return;
+
+      const response = await axios.get(`${API_URL}/solicitudes-cuidado/recibidas`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      const pendientes = response.data.filter((s: any) => s.estado === 'pendiente').length;
+      setSolicitudesPendientes(pendientes);
+    } catch (error) {
+      console.error('Error al obtener solicitudes pendientes:', error);
+      // No mostramos error al usuario, solo no actualizamos el contador
+    }
+  }, [getToken]);
 
   // Efecto para buscar el perfil del usuario CUANDO esté autenticado
   useEffect(() => {
@@ -130,7 +148,9 @@ export default function IndexScreen() {
         });
         setUserProfile(response.data as UserProfile);
         console.log('IndexScreen: Perfil obtenido:', response.data.rol);
-        // TODO: Llamar a fetchPreviewAlerts(token, response.data.id); 
+
+        // Obtener solicitudes pendientes para cualquier usuario
+        fetchSolicitudesPendientes(token);
       } catch (fetchError) {
         console.error('IndexScreen: Error al obtener perfil:', fetchError);
         if (axios.isAxiosError(fetchError) && (fetchError.response?.status === 401 || fetchError.response?.status === 403)) {
@@ -153,7 +173,7 @@ export default function IndexScreen() {
 
     fetchProfile();
   // Se ejecuta cuando cambia el estado de autenticación o la carga inicial
-  }, [isAuthenticated, isAuthLoading, getToken, setAuthState]); 
+  }, [isAuthenticated, isAuthLoading, getToken, setAuthState, fetchSolicitudesPendientes]); 
 
   // --- Función de Cerrar Sesión ---
   const handleLogout = async () => {
@@ -200,11 +220,24 @@ export default function IndexScreen() {
 
   // Muestra error si falló la carga del perfil
   if (profileError) {
+     // Auto-redirigir después de 2 segundos
+     useEffect(() => {
+       const timer = setTimeout(() => {
+         console.log('Auto-redirigiendo al login después de error...');
+         setAuthState(false);
+         router.replace('/login');
+       }, 2000);
+       return () => clearTimeout(timer);
+     }, []);
+
      return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorText}>{profileError}</Text>
-        {/* El botón redirige a login, lo que también fuerza un logout */}
-        <Button title="Ir a Inicio de Sesión" onPress={() => setAuthState(false)} /> 
+        <Text style={styles.redirectText}>Redirigiendo al inicio de sesión...</Text>
+        <Button title="Ir Ahora" onPress={() => {
+          setAuthState(false);
+          router.replace('/login');
+        }} />
       </View>
     );
   }
@@ -234,19 +267,46 @@ export default function IndexScreen() {
         {/* --- Dashboard del Cuidador --- */}
         {userProfile.rol === 'cuidador' && (
           <>
+            {/* Notificación de solicitudes pendientes */}
+            {solicitudesPendientes > 0 && (
+              <Pressable
+                style={styles.notificationBanner}
+                onPress={() => router.push('/solicitudes')}
+              >
+                <View style={styles.notificationContent}>
+                  <UserPlus size={24} color="#2563eb" />
+                  <View style={styles.notificationText}>
+                    <Text style={styles.notificationTitle}>
+                      {solicitudesPendientes} solicitud{solicitudesPendientes > 1 ? 'es' : ''} pendiente{solicitudesPendientes > 1 ? 's' : ''}
+                    </Text>
+                    <Text style={styles.notificationSubtitle}>
+                      Toca para ver y responder
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>{solicitudesPendientes}</Text>
+                </View>
+              </Pressable>
+            )}
+
+            <Text style={styles.sectionTitle}>Gestión de Personas</Text>
+            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/adultos-mayores')}>
+              <Users size={20} color="white" style={{ marginRight: 8 }} />
+              <Text style={styles.buttonText}>Ver Personas a Cuidar</Text>
+            </Pressable>
+            <Pressable style={[styles.actionButton, styles.greenButton]} onPress={() => router.push('/cuidador/agregar-persona')}>
+              <UserPlus size={20} color="white" style={{ marginRight: 8 }} />
+              <Text style={styles.buttonText}>Agregar Persona</Text>
+            </Pressable>
+
             <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/configuracion')}>
               <Text style={styles.buttonText}>Configurar Notificaciones</Text>
             </Pressable>
-            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => alert('Próximamente: Gestionar Recordatorios')}>
+            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/recordatorios')}>
               <Text style={styles.buttonText}>Gestionar Recordatorios</Text>
             </Pressable>
-             {/* <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => alert('Próximamente: Gestionar Personas Cuidadas')}>
-              <Text style={styles.buttonText}>Gestionar Personas Cuidadas</Text>
-            </Pressable>
-             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => alert('Próximamente: Gestionar Dispositivos')}>
-              <Text style={styles.buttonText}>Gestionar Dispositivos</Text>
-            </Pressable> */}
 
 
             <Text style={styles.sectionTitle}>Últimas Alertas</Text>
@@ -267,10 +327,33 @@ export default function IndexScreen() {
         {/* --- Dashboard del Adulto Mayor --- */}
         {userProfile.rol === 'adulto_mayor' && (
            <>
+            {/* Notificación de solicitudes pendientes */}
+            {solicitudesPendientes > 0 && (
+              <Pressable
+                style={styles.notificationBanner}
+                onPress={() => router.push('/solicitudes')}
+              >
+                <View style={styles.notificationContent}>
+                  <UserPlus size={24} color="#2563eb" />
+                  <View style={styles.notificationText}>
+                    <Text style={styles.notificationTitle}>
+                      {solicitudesPendientes} solicitud{solicitudesPendientes > 1 ? 'es' : ''} de cuidado
+                    </Text>
+                    <Text style={styles.notificationSubtitle}>
+                      Toca para ver y responder
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>{solicitudesPendientes}</Text>
+                </View>
+              </Pressable>
+            )}
+
             <Text style={styles.sectionTitle}>Mis Recordatorios de Hoy</Text>
 
             <Text style={styles.placeholderText}>[Lista de recordatorios del día]</Text>
-            
+
             <Pressable style={[styles.actionButton, styles.panicButton]} onPress={() => alert('¡Ayuda solicitada!')}>
               <Text style={styles.buttonText}>BOTÓN DE AYUDA</Text>
             </Pressable>
@@ -336,14 +419,66 @@ const styles = StyleSheet.create({
   welcome: { fontSize: 24, fontWeight: 'bold', marginBottom: 5, marginTop: 10, textAlign: 'center', color: '#1e3a8a' },
   sectionTitle: { fontSize: 20, fontWeight: '600', marginTop: 25, marginBottom: 15, color: '#111827', borderBottomWidth: 1, borderBottomColor: '#d1d5db', paddingBottom: 5 },
   errorText: { color: 'red', fontSize: 16, textAlign: 'center', marginBottom: 20 },
+  redirectText: { color: '#6b7280', fontSize: 14, textAlign: 'center', marginBottom: 20 },
   actionButton: { paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginBottom: 10, flexDirection: 'row', justifyContent: 'center' },
   blueButton: { backgroundColor: '#2563eb' },
+  greenButton: { backgroundColor: '#10b981' },
   greyButton: { backgroundColor: '#e5e7eb' },
   panicButton: { backgroundColor: '#dc2626', paddingVertical: 20, marginTop: 20 },
   buttonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   logoutButton: { backgroundColor: '#ef4444', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 40, marginBottom: 20 },
   placeholderText:{ textAlign: 'center', color: '#9ca3af', marginVertical: 20 },
   noAlerts: { textAlign: 'center', color: '#6b7280', fontSize: 14, marginTop: 10, marginBottom: 10 },
+  // Estilos para notificación de solicitudes
+  notificationBanner: {
+    backgroundColor: '#dbeafe',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 15,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderLeftWidth: 4,
+    borderLeftColor: '#2563eb',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  notificationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  notificationText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e3a8a',
+    marginBottom: 2,
+  },
+  notificationSubtitle: {
+    fontSize: 13,
+    color: '#3b82f6',
+  },
+  notificationBadge: {
+    backgroundColor: '#2563eb',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationBadgeText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
   // Estilos AlertPreviewCard
    card: {
     backgroundColor: 'white', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 15, marginBottom: 10,
