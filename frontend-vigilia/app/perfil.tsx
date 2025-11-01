@@ -250,13 +250,15 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={{ flex: 1 }}>
       {/* Header con el componente reutilizable */}
       <CustomHeader
         title="Mi Perfil"
         onMenuPress={() => setIsPanelOpen(true)}
         showBackButton={true}
       />
+
+      <ScrollView style={styles.container}>
 
       {/* Información del Usuario (No editable aquí directamente) */}
       <View style={styles.userInfoSection}>
@@ -329,9 +331,10 @@ export default function ProfileScreen() {
           </Pressable>
         </MenuItem>
       </View>
+      </ScrollView>
 
       <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
-    </ScrollView>
+    </View>
   );
 }
 

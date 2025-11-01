@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Image, ScrollView, Platform, Alert } from 'react-native';
-import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight, LogOut } from 'lucide-react-native';
+import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight, LogOut, Home } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -94,79 +94,90 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
 
   return (
     <>
-      {/* Fondo oscuro */}
-      <Pressable style={styles.overlay} onPress={onClose} />
-
       {/* Panel lateral */}
       <View style={styles.slidingPanel}>
-        <View style={styles.panelContent}>
-          {/* Header */}
-          <View style={styles.panelHeader}>
-            <View style={styles.logoContainer}>
-              <Image source={require('../assets/images/LogoVigilIa.png')} style={styles.logo} />
-              <Text style={styles.appName}>VigilIA</Text>
-            </View>
-            <Pressable onPress={onClose} style={styles.closeButton}>
-              <X size={24} />
-            </Pressable>
+        {/* Header fijo (no se desplaza) */}
+        <View style={styles.panelHeader}>
+          <View style={styles.logoContainer}>
+            <Image source={require('../assets/images/LogoVigilIa.png')} style={styles.logo} />
+            <Text style={styles.appName}>VigilIA</Text>
           </View>
-
-          <ScrollView>
-            <MenuItem
-              icon={<User size={20} />}
-              text="Mi Perfil"
-              onPress={() => {
-                onClose();
-                router.push('/perfil');
-              }}
-            />
-            <MenuItem
-              icon={<Bell size={20} />}
-              text="Alertas"
-              onPress={() => {
-                onClose();
-                router.push('/cuidador/alertas');
-              }}
-            />
-            <MenuItem
-              icon={<CalendarCheck size={20} />}
-              text="Recordatorios"
-              onPress={() => {
-                onClose();
-                router.push('/cuidador/recordatorios');
-              }}
-            />
-            <MenuItem
-              icon={<Settings size={20} />}
-              text="Configuración"
-              onPress={() => {
-                onClose();
-                router.push('/configuracion');
-              }}
-            />
-            <MenuItem
-              icon={<HelpCircle size={20} />}
-              text="Ayuda"
-              onPress={() => {
-                onClose();
-                router.push('/ayuda');
-              }}
-            />
-
-            {/* Separador */}
-            <View style={styles.separator} />
-
-            {/* Botón de Cerrar Sesión */}
-            <Pressable style={styles.logoutMenuItem} onPress={handleLogout}>
-              <View style={styles.menuLeft}>
-                <LogOut size={20} color="#ef4444" />
-                <Text style={styles.logoutText}>Cerrar Sesión</Text>
-              </View>
-              <ChevronRight size={18} color="#ef4444" />
-            </Pressable>
-          </ScrollView>
+          <Pressable onPress={onClose} style={styles.closeButton}>
+            <X size={24} />
+          </Pressable>
         </View>
+
+        {/* Contenido con scroll */}
+        <ScrollView
+          style={styles.scrollContent}
+          contentContainerStyle={styles.scrollContentContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <MenuItem
+            icon={<Home size={20} />}
+            text="Inicio"
+            onPress={() => {
+              onClose();
+              router.push('/');
+            }}
+          />
+          <MenuItem
+            icon={<User size={20} />}
+            text="Mi Perfil"
+            onPress={() => {
+              onClose();
+              router.push('/perfil');
+            }}
+          />
+          <MenuItem
+            icon={<Bell size={20} />}
+            text="Alertas"
+            onPress={() => {
+              onClose();
+              router.push('/cuidador/alertas');
+            }}
+          />
+          <MenuItem
+            icon={<CalendarCheck size={20} />}
+            text="Recordatorios"
+            onPress={() => {
+              onClose();
+              router.push('/cuidador/recordatorios');
+            }}
+          />
+          <MenuItem
+            icon={<Settings size={20} />}
+            text="Configuración"
+            onPress={() => {
+              onClose();
+              router.push('/configuracion');
+            }}
+          />
+          <MenuItem
+            icon={<HelpCircle size={20} />}
+            text="Ayuda"
+            onPress={() => {
+              onClose();
+              router.push('/ayuda');
+            }}
+          />
+
+          {/* Separador */}
+          <View style={styles.separator} />
+
+          {/* Botón de Cerrar Sesión */}
+          <Pressable style={styles.logoutMenuItem} onPress={handleLogout}>
+            <View style={styles.menuLeft}>
+              <LogOut size={20} color="#ef4444" />
+              <Text style={styles.logoutText}>Cerrar Sesión</Text>
+            </View>
+            <ChevronRight size={18} color="#ef4444" />
+          </Pressable>
+        </ScrollView>
       </View>
+
+      {/* Fondo oscuro - solo en el área fuera del menú */}
+      <Pressable style={styles.overlay} onPress={onClose} />
     </>
   );
 }
@@ -175,7 +186,7 @@ const styles = StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,
-    left: 0,
+    left: 280, // Empieza después del menú (280px de ancho)
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -188,7 +199,8 @@ const styles = StyleSheet.create({
     width: 280,
     bottom: 0,
     backgroundColor: '#fff',
-    padding: 16,
+    paddingTop: 16,
+    paddingHorizontal: 16,
     shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowOffset: { width: 2, height: 0 },
@@ -196,12 +208,20 @@ const styles = StyleSheet.create({
     elevation: 5,
     zIndex: 999,
   },
-  panelContent: { flex: 1 },
   panelHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between', // separa logo y botón
-    marginBottom: 24,
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  scrollContent: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 20,
   },
   logoContainer: {
     flexDirection: 'row',

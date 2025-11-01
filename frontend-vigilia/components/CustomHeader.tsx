@@ -13,32 +13,30 @@ export default function CustomHeader({ title, onMenuPress, showBackButton = true
   const router = useRouter();
   const pathname = usePathname();
 
-  // Determinar si mostrar el botón de back (no en index/dashboard)
+  // Determinar si estamos en la página de inicio
   const isHomePage = pathname === '/' || pathname === '/index';
-  // Mostrar back en rutas anidadas (que contienen /) excepto en home
-  const isNestedRoute = pathname.split('/').filter(p => p).length > 1;
-  const shouldShowBack = showBackButton && !isHomePage && isNestedRoute;
 
   return (
     <View style={styles.header}>
+      {/* Botón izquierdo: Siempre muestra el menú hamburguesa */}
       <View style={styles.leftSection}>
-        {shouldShowBack ? (
-          <Pressable onPress={() => router.back()} style={styles.iconButton}>
-            <ArrowLeft size={24} color="#ffffff" />
-          </Pressable>
-        ) : (
-          <Pressable onPress={onMenuPress} style={styles.iconButton}>
-            <Menu size={24} color="#ffffff" />
-          </Pressable>
-        )}
+        <Pressable onPress={onMenuPress} style={styles.iconButton}>
+          <Menu size={24} color="#ffffff" />
+        </Pressable>
       </View>
 
+      {/* Título centrado */}
       <View style={styles.centerSection}>
         <Text style={styles.title} numberOfLines={1}>{title}</Text>
       </View>
 
+      {/* Botón derecho: Muestra flecha de regreso si showBackButton=true y no estamos en home */}
       <View style={styles.rightSection}>
-        {/* Espacio reservado para mantener el título centrado */}
+        {showBackButton && !isHomePage ? (
+          <Pressable onPress={() => router.back()} style={styles.iconButton}>
+            <ArrowLeft size={24} color="#ffffff" />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
