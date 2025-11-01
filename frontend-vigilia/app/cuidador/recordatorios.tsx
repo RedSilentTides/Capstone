@@ -542,9 +542,10 @@ export default function RecordatoriosScreen() {
                                     numberOfLines={3}
                                 />
 
-                                {selectedDays.length === 0 ? (
+                                {/* Mostrar calendario SOLO si frecuencia es "una_vez" */}
+                                {currentReminder.frecuencia === 'una_vez' ? (
                                     <>
-                                        {/* Si NO hay días seleccionados: Mostrar Fecha completa + Hora */}
+                                        {/* Solo una vez: Mostrar Fecha completa + Hora */}
                                         <Text style={styles.modalLabel}>Fecha y Hora *</Text>
 
                                         <Pressable
@@ -636,7 +637,7 @@ export default function RecordatoriosScreen() {
                                     </>
                                 ) : (
                                     <>
-                                        {/* Si HAY días seleccionados: Solo mostrar selector de Hora */}
+                                        {/* Diario, Mensual, o Semanal con días: Solo selector de Hora */}
                                         <Text style={styles.modalLabel}>Hora del recordatorio *</Text>
                                         <View style={styles.timePickerContainer}>
                                             <View style={styles.timeInputRow}>
@@ -676,9 +677,21 @@ export default function RecordatoriosScreen() {
                                                     placeholder="MM"
                                                 />
                                             </View>
-                                            <Text style={styles.helperText}>
-                                                Esta hora se aplicará a: {selectedDays.map(d => ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d]).join(', ')}
-                                            </Text>
+                                            {selectedDays.length > 0 && (
+                                                <Text style={styles.helperText}>
+                                                    Esta hora se aplicará a: {selectedDays.map(d => ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d]).join(', ')}
+                                                </Text>
+                                            )}
+                                            {currentReminder.frecuencia === 'diario' && (
+                                                <Text style={styles.helperText}>
+                                                    Este recordatorio se repetirá todos los días a esta hora
+                                                </Text>
+                                            )}
+                                            {currentReminder.frecuencia === 'mensual' && (
+                                                <Text style={styles.helperText}>
+                                                    Este recordatorio se repetirá mensualmente a esta hora
+                                                </Text>
+                                            )}
                                         </View>
                                     </>
                                 )}
