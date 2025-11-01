@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, ReactNode } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Platform, Button } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
 import { User, Lock, Trash2, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
@@ -8,7 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, deleteUser } from 'firebase/auth';
 import { auth as firebaseAuthInstance } from '../firebaseConfig';
 import { useAuth } from './_layout';
-import Header from '../components/Header';
+import CustomHeader from '../components/CustomHeader';
+import SlidingPanel from '../components/Slidingpanel';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -52,6 +53,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openPanel, setOpenPanel] = useState<string | null>(null); // Panel desplegable activo
+  const [isPanelOpen, setIsPanelOpen] = useState(false); // Estado para el panel de navegación
 
   // Estados para los formularios
   const [currentPassword, setCurrentPassword] = useState(""); // Para reautenticar
@@ -240,7 +242,9 @@ export default function ProfileScreen() {
      return (
        <View style={styles.centerContainer}>
          <Text style={styles.errorText}>{error}</Text>
-         <Button title="Reintentar" onPress={fetchProfile} />
+         <Pressable style={styles.button} onPress={fetchProfile}>
+           <Text style={styles.buttonText}>Reintentar</Text>
+         </Pressable>
        </View>
      );
   }
@@ -248,10 +252,10 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container}>
       {/* Header con el componente reutilizable */}
-      <Header
+      <CustomHeader
         title="Mi Perfil"
-        backgroundColor="#8b5cf6"
-        icon={<User size={28} color="#fff" />}
+        onMenuPress={() => setIsPanelOpen(true)}
+        showBackButton={true}
       />
 
       {/* Información del Usuario (No editable aquí directamente) */}
@@ -325,6 +329,8 @@ export default function ProfileScreen() {
           </Pressable>
         </MenuItem>
       </View>
+
+      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
     </ScrollView>
   );
 }

@@ -2,20 +2,22 @@ import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { HelpCircle, ChevronDown, ChevronUp, Phone, Mail } from 'lucide-react-native';
-import Header from '../components/Header'; 
+import CustomHeader from '../components/CustomHeader';
+import SlidingPanel from '../components/Slidingpanel'; 
 
 export default function HelpScreen() { // Renombrado para claridad
   const router = useRouter();
   const [isContactOpen, setIsContactOpen] = useState(false); // Estado para desplegable
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Header con el componente reutilizable */}
-      <Header
+    <View style={{ flex: 1 }}>
+      <CustomHeader
         title="Ayuda y Soporte"
-        backgroundColor="#8b5cf6"
-        icon={<HelpCircle size={28} color="#fff" />}
+        onMenuPress={() => setIsPanelOpen(true)}
+        showBackButton={true}
       />
+      <ScrollView style={styles.container}>
 
       {/* Sección Centro de ayuda (Desplegable) */}
       <View style={styles.section}>
@@ -24,7 +26,7 @@ export default function HelpScreen() { // Renombrado para claridad
           onPress={() => setIsContactOpen(!isContactOpen)} // Cambia el estado
         >
           <View style={styles.sectionHeaderLeft}>
-              <HelpCircle size={20} color="#1e3a8a" />
+              <HelpCircle size={20} color="#7c3aed" />
               <Text style={styles.sectionHeaderText}>Contacto de Soporte</Text>
           </View>
           {/* Muestra flecha arriba o abajo según el estado */}
@@ -64,10 +66,12 @@ export default function HelpScreen() { // Renombrado para claridad
               <Text style={styles.faqAnswer}>Consulta nuestro manual en línea...</Text>
               // ... más preguntas ...
           </View>
-      </View> 
+      </View>
       */}
 
-    </ScrollView>
+      </ScrollView>
+      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+    </View>
   );
 }
 

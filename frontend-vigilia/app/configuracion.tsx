@@ -4,7 +4,9 @@ import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from './_layout'; 
+import { useAuth } from './_layout';
+import CustomHeader from '../components/CustomHeader';
+import SlidingPanel from '../components/Slidingpanel'; 
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -33,6 +35,7 @@ export default function ConfiguracionScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Función reutilizable para obtener el token
   const getToken = useCallback(async (): Promise<string | null> => {
@@ -195,7 +198,7 @@ export default function ConfiguracionScreen() {
   if (isLoading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#1e3a8a" />
+        <ActivityIndicator size="large" color="#7c3aed" />
         <Text>Cargando configuración...</Text>
       </View>
     );
@@ -205,18 +208,27 @@ export default function ConfiguracionScreen() {
      return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorText}>{error}</Text>
-        <Button title="Reintentar" onPress={fetchConfig} />
+        <Pressable style={styles.button} onPress={fetchConfig}>
+          <Text style={styles.buttonText}>Reintentar</Text>
+        </Pressable>
         <View style={{marginTop: 10}}/>
-        <Button title="Volver al Inicio" onPress={() => router.replace('/')} />
+        <Pressable style={styles.button} onPress={() => router.replace('/')}>
+          <Text style={styles.buttonText}>Volver al Inicio</Text>
+        </Pressable>
       </View>
     );
   }
 
   // Formulario de configuración
   return (
-    <ScrollView style={styles.container}>
-      {/* Podrías añadir un header aquí si _layout no lo proporciona para esta ruta */}
-      <Text style={styles.title}>Preferencias de Notificación</Text>
+    <View style={{ flex: 1 }}>
+      <CustomHeader
+        title="Configuración"
+        onMenuPress={() => setIsPanelOpen(true)}
+        showBackButton={true}
+      />
+      <ScrollView style={styles.container}>
+        <Text style={styles.title}>Preferencias de Notificación</Text>
       
       {error && <Text style={styles.errorText}>Hubo un error al guardar: {error}</Text>}
 
@@ -298,7 +310,9 @@ export default function ConfiguracionScreen() {
         <Text style={styles.buttonText}>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</Text>
       </Pressable>
 
-    </ScrollView>
+      </ScrollView>
+      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+    </View>
   );
 }
 
@@ -319,7 +333,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 25,
-    color: '#1e3a8a',
+    color: '#7c3aed',
   },
   settingRow: {
     flexDirection: 'row',

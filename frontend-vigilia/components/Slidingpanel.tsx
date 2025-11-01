@@ -1,7 +1,10 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
-import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight } from 'lucide-react-native';
+import { View, Text, Pressable, StyleSheet, Image, ScrollView, Platform, Alert } from 'react-native';
+import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight, LogOut } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '../app/_layout';
 
 interface SlidingPanelProps {
   isOpen: boolean;
@@ -10,8 +13,42 @@ interface SlidingPanelProps {
 
 export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
   const router = useRouter();
+  const { setAuthState } = useAuth();
 
   if (!isOpen) return null;
+
+  const handleLogout = async () => {
+    Alert.alert(
+      "Cerrar Sesión",
+      "¿Estás seguro que deseas cerrar sesión?",
+      [
+        {
+          text: "Cancelar",
+          style: "cancel"
+        },
+        {
+          text: "Cerrar Sesión",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const tokenKey = 'userToken';
+              if (Platform.OS === 'web') {
+                await AsyncStorage.removeItem(tokenKey);
+              } else {
+                await SecureStore.deleteItemAsync(tokenKey);
+              }
+              setAuthState(false);
+              onClose();
+              router.replace('/login');
+            } catch (error) {
+              console.error('Error al cerrar sesión:', error);
+              Alert.alert('Error', 'No se pudo cerrar sesión correctamente');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const MenuItem = ({
     icon,
@@ -91,6 +128,18 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
                 router.push('/ayuda');
               }}
             />
+
+            {/* Separador */}
+            <View style={styles.separator} />
+
+            {/* Botón de Cerrar Sesión */}
+            <Pressable style={styles.logoutMenuItem} onPress={handleLogout}>
+              <View style={styles.menuLeft}>
+                <LogOut size={20} color="#ef4444" />
+                <Text style={styles.logoutText}>Cerrar Sesión</Text>
+              </View>
+              <ChevronRight size={18} color="#ef4444" />
+            </Pressable>
           </ScrollView>
         </View>
       </View>
@@ -150,4 +199,27 @@ const styles = StyleSheet.create({
   },
   menuLeft: { flexDirection: 'row', alignItems: 'center' },
   menuText: { fontSize: 16, marginLeft: 8 },
+  separator: {
+    height: 1,
+    backgroundColor: '#d1d5db',
+    marginVertical: 12,
+    marginHorizontal: 8,
+  },
+  logoutMenuItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    backgroundColor: '#fee2e2',
+    borderRadius: 8,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  logoutText: {
+    fontSize: 16,
+    marginLeft: 8,
+    color: '#ef4444',
+    fontWeight: '600',
+  },
 });

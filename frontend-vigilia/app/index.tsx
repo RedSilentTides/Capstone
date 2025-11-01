@@ -3,20 +3,21 @@ import {
     View, Text, StyleSheet, ActivityIndicator, Button,
     Pressable, ScrollView, Platform
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+// Se elimina useFocusEffect porque no se usa
+import { useRouter } from 'expo-router'; 
 import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './_layout';
-import { Info, AlertTriangle, CheckCircle, Bell, Menu, UserPlus, Users } from 'lucide-react-native';
+import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users } from 'lucide-react-native';
 import SlidingPanel from '../components/Slidingpanel';
-import Header from '../components/Header';
+import CustomHeader from '../components/CustomHeader';
 
 // URL del backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
-// Tipos (sin cambios)
-type UserProfile = { /* ... */ 
+// Tipos
+type UserProfile = { 
   id: number;
   firebase_uid: string;
   email: string;
@@ -24,7 +25,7 @@ type UserProfile = { /* ... */
   rol: 'cuidador' | 'administrador' | 'adulto_mayor';
 };
 type AlertType = 'info' | 'warning' | 'error' | 'success';
-interface AlertItem { /* ... */ 
+interface AlertItem { 
   id: string; 
   type: AlertType;
   title: string; 
@@ -32,14 +33,14 @@ interface AlertItem { /* ... */
   timestamp: Date; 
   read: boolean;
 }
-const alertConfig: Record<AlertType, { color: string }> = { /* ... */ 
+const alertConfig: Record<AlertType, { color: string }> = { 
   info: { color: '#3b82f6' },
   warning: { color: '#f59e0b' },
   error: { color: '#ef4444' },
   success: { color: '#10b981' },
 };
 
-// --- Componente AlertPreviewCard (sin cambios) ---
+// --- Componente AlertPreviewCard ---
 function AlertPreviewCard({ alert }: { alert: AlertItem }) {
   const config = alertConfig[alert.type];
   const renderIcon = () => {
@@ -78,9 +79,8 @@ function AlertPreviewCard({ alert }: { alert: AlertItem }) {
 
 // --- Pantalla Principal ---
 export default function IndexScreen() {
-  // Obtenemos estado y función del contexto de autenticación
+  // --- INICIO DE ZONA DE HOOKS (TODOS JUNTOS) ---
   const { isAuthenticated, setAuthState, isLoading: isAuthLoading } = useAuth();
-
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -88,7 +88,6 @@ export default function IndexScreen() {
   const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
   const router = useRouter();
 
-  // Datos de ejemplo para alertas (se buscarán de API más adelante)
   const [previewAlerts] = useState<AlertItem[]>([
       { id: '1', type: 'error', title: 'Caída Detectada', message: 'Posible caída en Salón Principal', timestamp: new Date(Date.now() - 3600000), read: false },
       { id: '2', type: 'info', title: 'Recordatorio', message: 'Tomar medicamento presión', timestamp: new Date(Date.now() - 7200000), read: true },
@@ -175,6 +174,21 @@ export default function IndexScreen() {
   // Se ejecuta cuando cambia el estado de autenticación o la carga inicial
   }, [isAuthenticated, isAuthLoading, getToken, setAuthState, fetchSolicitudesPendientes]); 
 
+  // Efecto para auto-redirigir en caso de error
+  // (Este es el hook que debía estar aquí arriba)
+  useEffect(() => {
+    if (profileError) {
+      const timer = setTimeout(() => {
+        console.log('Auto-redirigiendo al login después de error...');
+        setAuthState(false);
+        router.replace('/login');
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [profileError, setAuthState, router]);
+  // --- FIN DE ZONA DE HOOKS ---
+
+
   // --- Función de Cerrar Sesión ---
   const handleLogout = async () => {
       console.log("Cerrando sesión...");
@@ -198,6 +212,7 @@ export default function IndexScreen() {
 
 
   // --- Renderizado ---
+  // (La lógica de retorno condicional viene DESPUÉS de todos los hooks)
 
   // Muestra carga global si el AuthProvider aún está verificando
   if (isAuthLoading) {
@@ -219,17 +234,8 @@ export default function IndexScreen() {
   }
 
   // Muestra error si falló la carga del perfil
+  // (Este es el bloque if que se queda. El duplicado fue eliminado)
   if (profileError) {
-     // Auto-redirigir después de 2 segundos
-     useEffect(() => {
-       const timer = setTimeout(() => {
-         console.log('Auto-redirigiendo al login después de error...');
-         setAuthState(false);
-         router.replace('/login');
-       }, 2000);
-       return () => clearTimeout(timer);
-     }, []);
-
      return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorText}>{profileError}</Text>
@@ -242,22 +248,16 @@ export default function IndexScreen() {
     );
   }
 
+  // --- SE ELIMINAN LOS BLOQUES DUPLICADOS DE useEffect Y if (profileError) DE AQUÍ ---
+
   // Si está autenticado y tenemos el perfil, mostramos el dashboard correcto
-  // No necesitamos verificar 'isAuthenticated' aquí porque _layout ya nos habría redirigido si fuera false
   if (userProfile) {
     return (
       <View style={{ flex: 1 }}>
-        {/* Botón de menú flotante */}
-        {!isPanelOpen && (
-          <Pressable style={styles.menuButton} onPress={() => setIsPanelOpen(true)}>
-            <Menu size={28} color="#111827" />
-          </Pressable>
-        )}
-
-        {/* Header con logo */}
-        <Header
+        {/* Header con menú lateral */}
+        <CustomHeader
           title="VigilIA"
-          backgroundColor="#2563eb"
+          onMenuPress={() => setIsPanelOpen(true)}
           showBackButton={false}
         />
 
@@ -379,11 +379,7 @@ export default function IndexScreen() {
         </ScrollView>
 
         {/* Panel lateral */}
-        {isPanelOpen && (
-          <View style={StyleSheet.absoluteFill}>
-            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
-          </View>
-        )}
+        <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
       </View>
     );
   }
@@ -398,24 +394,10 @@ export default function IndexScreen() {
   );
 }
 
-// Estilos (Añadí borde izquierdo a AlertPreviewCard)
+// Estilos
 const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: '#f0f4f8' },
   container: { flex: 1, padding: 20, paddingTop: 10, backgroundColor: '#f0f4f8' },
-  menuButton: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    zIndex: 1001,
-    backgroundColor: '#f3f4f6',
-    padding: 10,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 5,
-  },
   welcome: { fontSize: 24, fontWeight: 'bold', marginBottom: 5, marginTop: 10, textAlign: 'center', color: '#1e3a8a' },
   sectionTitle: { fontSize: 20, fontWeight: '600', marginTop: 25, marginBottom: 15, color: '#111827', borderBottomWidth: 1, borderBottomColor: '#d1d5db', paddingBottom: 5 },
   errorText: { color: 'red', fontSize: 16, textAlign: 'center', marginBottom: 20 },

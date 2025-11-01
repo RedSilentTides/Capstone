@@ -7,7 +7,8 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import Header from '../../components/Header';
+import CustomHeader from '../../components/CustomHeader';
+import SlidingPanel from '../../components/Slidingpanel';
 import { UserPlus } from 'lucide-react-native';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -18,6 +19,7 @@ export default function AgregarPersonaScreen() {
     const [mensaje, setMensaje] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     const getToken = useCallback(async (): Promise<string | null> => {
         const tokenKey = 'userToken';
@@ -104,16 +106,15 @@ export default function AgregarPersonaScreen() {
 
     return (
         <View style={{ flex: 1 }}>
-            <Header
+            <CustomHeader
                 title="Agregar Persona a Cuidar"
-                backgroundColor="#2563eb"
+                onMenuPress={() => setIsPanelOpen(true)}
                 showBackButton={true}
-                onBackPress={() => router.push('/')}
             />
 
             <ScrollView style={styles.container}>
                 <View style={styles.iconContainer}>
-                    <UserPlus size={64} color="#2563eb" />
+                    <UserPlus size={64} color="#7c3aed" />
                 </View>
 
                 <Text style={styles.title}>Enviar Solicitud de Cuidado</Text>
@@ -175,6 +176,7 @@ export default function AgregarPersonaScreen() {
                     <Text style={styles.cancelButtonText}>Cancelar</Text>
                 </Pressable>
             </ScrollView>
+            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
         </View>
     );
 }
@@ -193,7 +195,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: '#1e3a8a',
+        color: '#7c3aed',
         textAlign: 'center',
         marginBottom: 10,
     },
@@ -239,14 +241,14 @@ const styles = StyleSheet.create({
         textAlignVertical: 'top',
     },
     button: {
-        backgroundColor: '#2563eb',
+        backgroundColor: '#7c3aed',
         paddingVertical: 14,
         borderRadius: 8,
         alignItems: 'center',
         marginTop: 10,
     },
     buttonDisabled: {
-        backgroundColor: '#93c5fd',
+        backgroundColor: '#c4b5fd',
     },
     buttonText: {
         color: 'white',

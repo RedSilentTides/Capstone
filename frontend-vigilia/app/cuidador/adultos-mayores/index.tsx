@@ -7,7 +7,8 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import Header from '../../components/Header';
+import CustomHeader from '../../../components/CustomHeader';
+import SlidingPanel from '../../../components/Slidingpanel';
 import { User, UserPlus, Calendar, MapPin, FileText, Bell } from 'lucide-react-native';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -29,6 +30,7 @@ export default function AdultosMayoresScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     const getToken = useCallback(async (): Promise<string | null> => {
         const tokenKey = 'userToken';
@@ -168,11 +170,10 @@ export default function AdultosMayoresScreen() {
 
     return (
         <View style={{ flex: 1 }}>
-            <Header
-                title="Personas a Cuidar"
-                backgroundColor="#2563eb"
+            <CustomHeader
+                title="Adultos Mayores"
+                onMenuPress={() => setIsPanelOpen(true)}
                 showBackButton={true}
-                onBackPress={() => router.back()}
             />
 
             <ScrollView
@@ -225,6 +226,9 @@ export default function AdultosMayoresScreen() {
                     </>
                 )}
             </ScrollView>
+
+            {/* Panel lateral */}
+            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
         </View>
     );
 }

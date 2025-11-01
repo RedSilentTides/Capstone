@@ -642,20 +642,17 @@ def create_recordatorio(
 @app.get("/recordatorios", response_model=list[RecordatorioInfo])
 def get_recordatorios(
     adulto_mayor_id: int | None = None, # Permitir filtrar por adulto_mayor_id
-    skip: int = 0, 
-    limit: int = 100, 
+    skip: int = 0,
+    limit: int = 100,
     current_user: dict = Depends(get_current_user)
 ):
     """Obtiene la lista de recordatorios. Si se provee adulto_mayor_id, filtra para esa persona."""
     user_info = read_users_me(current_user)
-    
-    if user_info.rol not in ['cuidador', 'administrador']:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
 
-    print(f"Obteniendo recordatorios para cuidador_id: {user_info.id}, filtro adulto_mayor_id: {adulto_mayor_id}")
+    print(f"Obteniendo recordatorios para usuario_id: {user_info.id}, rol: {user_info.rol}, filtro adulto_mayor_id: {adulto_mayor_id}")
     try:
         with engine.connect() as db_conn:
-            
+
             # Construcción base de la consulta
             select_clause = """
                 SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.fecha_creacion
@@ -663,25 +660,46 @@ def get_recordatorios(
             where_clauses = []
             params = {"limit": limit, "offset": skip}
 
-            # Si se pide filtrar por un adulto mayor específico, verificar permiso
-            if adulto_mayor_id is not None:
-                 check_caregiver_relationship(db_conn, user_info.id, adulto_mayor_id)
-                 where_clauses.append("r.adulto_mayor_id = :adulto_mayor_id")
-                 params["adulto_mayor_id"] = adulto_mayor_id
+            # Lógica según el rol del usuario
+            if user_info.rol in ['cuidador', 'administrador']:
+                # CUIDADORES/ADMINS: Ver recordatorios de los adultos mayores que cuidan
+                if adulto_mayor_id is not None:
+                    # Verificar que el cuidador tenga permiso para ver este adulto mayor
+                    check_caregiver_relationship(db_conn, user_info.id, adulto_mayor_id)
+                    where_clauses.append("r.adulto_mayor_id = :adulto_mayor_id")
+                    params["adulto_mayor_id"] = adulto_mayor_id
+                else:
+                    # Si no se filtra, traer recordatorios de todos los AM que supervisa
+                    where_clauses.append("""r.adulto_mayor_id IN (
+                        SELECT cam.adulto_mayor_id
+                        FROM cuidadores_adultos_mayores cam
+                        WHERE cam.usuario_id = :cuidador_id
+                    )""")
+                    params["cuidador_id"] = user_info.id
+
+            elif user_info.rol == 'adulto_mayor':
+                # ADULTOS MAYORES: Solo ver sus propios recordatorios
+                # Primero, obtener el adulto_mayor_id del usuario
+                query_am = text("SELECT id FROM adultos_mayores WHERE usuario_id = :usuario_id")
+                am_result = db_conn.execute(query_am, {"usuario_id": user_info.id}).fetchone()
+
+                if not am_result:
+                    print(f"❌ Usuario {user_info.id} es adulto_mayor pero no tiene registro en tabla adultos_mayores")
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Perfil de adulto mayor no encontrado.")
+
+                am_id = am_result[0]
+                where_clauses.append("r.adulto_mayor_id = :adulto_mayor_id")
+                params["adulto_mayor_id"] = am_id
+                print(f"✓ Adulto mayor {user_info.nombre} (id: {am_id}) consultando sus recordatorios")
+
             else:
-                 # Si no se filtra, solo traer recordatorios de los AM que el cuidador supervisa
-                 where_clauses.append("""r.adulto_mayor_id IN (
-                     SELECT cam.adulto_mayor_id 
-                     FROM cuidadores_adultos_mayores cam 
-                     WHERE cam.usuario_id = :cuidador_id
-                 )""")
-                 params["cuidador_id"] = user_info.id
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Rol no autorizado para ver recordatorios.")
 
             # Unir cláusulas WHERE si existen
             where_sql = ""
             if where_clauses:
                 where_sql = "WHERE " + " AND ".join(where_clauses)
-                
+
             # Consulta final
             query_sql = f"""
                 {select_clause}
@@ -690,10 +708,10 @@ def get_recordatorios(
                 LIMIT :limit OFFSET :offset
             """
             query = text(query_sql)
-            
+
             results = db_conn.execute(query, params).fetchall()
             print(f"✅ Encontrados {len(results)} recordatorios.")
-            
+
             recordatorios = [RecordatorioInfo(**row._mapping) for row in results]
             return recordatorios
 

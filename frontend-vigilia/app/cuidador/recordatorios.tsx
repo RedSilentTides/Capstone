@@ -7,8 +7,11 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { PlusCircle, Calendar, Clock, Repeat, Trash2, Edit2, X } from 'lucide-react-native';
 import { useAuth } from '../_layout';
+import CustomHeader from '../../components/CustomHeader';
+import SlidingPanel from '../../components/Slidingpanel';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -31,6 +34,14 @@ interface ReminderFormData {
     frecuencia: 'una_vez' | 'diario' | 'semanal' | 'mensual';
 }
 
+interface UserProfile {
+    id: number;
+    firebase_uid: string;
+    email: string;
+    nombre: string;
+    rol: string;
+}
+
 const frecuenciaOptions = [
     { label: 'Solo una vez', value: 'una_vez' },
     { label: 'Diario', value: 'diario' },
@@ -43,9 +54,9 @@ export default function RecordatoriosScreen() {
     const params = useLocalSearchParams();
     const { setAuthState } = useAuth();
 
-    // Obtenemos los parámetros de la URL
-    const adultoMayorId = params.adulto_mayor_id ? parseInt(params.adulto_mayor_id as string) : null;
-    const nombreAdultoMayor = params.nombre as string || 'Persona';
+    // Obtenemos los parámetros de la URL (pueden no existir si es un adulto mayor viendo sus propios recordatorios)
+    const adultoMayorIdParam = params.adulto_mayor_id ? parseInt(params.adulto_mayor_id as string) : null;
+    const nombreParam = params.nombre as string || '';
 
     const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -55,6 +66,14 @@ export default function RecordatoriosScreen() {
     const [isEditing, setIsEditing] = useState(false);
     const [currentReminder, setCurrentReminder] = useState<Partial<ReminderFormData>>({});
     const [isSaving, setIsSaving] = useState(false);
+    const [isPanelOpen, setIsPanelOpen] = useState(false);
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+    const [adultoMayorId, setAdultoMayorId] = useState<number | null>(adultoMayorIdParam);
+    const [nombreAdultoMayor, setNombreAdultoMayor] = useState<string>(nombreParam);
+
+    // Estados para el DateTimePicker
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [showTimePicker, setShowTimePicker] = useState(false);
 
     const getToken = useCallback(async (): Promise<string | null> => {
         const tokenKey = 'userToken';
@@ -65,13 +84,48 @@ export default function RecordatoriosScreen() {
         }
     }, []);
 
-    const fetchRecordatorios = useCallback(async (isRefreshing = false) => {
-        if (!adultoMayorId) {
-            setError('No se especificó un adulto mayor.');
-            setIsLoading(false);
-            return;
-        }
+    // Obtener perfil del usuario
+    const fetchUserProfile = useCallback(async () => {
+        try {
+            const token = await getToken();
+            if (!token) {
+                setAuthState(false);
+                router.replace('/login');
+                return null;
+            }
 
+            const response = await axios.get<UserProfile>(`${API_URL}/usuarios/yo`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            setUserProfile(response.data);
+
+            // Si es adulto mayor y no se pasó un adulto_mayor_id, obtenerlo
+            if (response.data.rol === 'adulto_mayor' && !adultoMayorIdParam) {
+                // Obtener el adulto_mayor_id desde la base de datos
+                const adultoResponse = await axios.get(`${API_URL}/adultos-mayores`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                if (adultoResponse.data.length > 0) {
+                    const adultoMayorData = adultoResponse.data.find((am: any) => am.usuario_id === response.data.id);
+                    if (adultoMayorData) {
+                        setAdultoMayorId(adultoMayorData.id);
+                        setNombreAdultoMayor(adultoMayorData.nombre_completo || response.data.nombre);
+                    }
+                } else {
+                    setNombreAdultoMayor(response.data.nombre);
+                }
+            }
+
+            return response.data;
+        } catch (err) {
+            console.error('Error al obtener perfil:', err);
+            return null;
+        }
+    }, [getToken, router, setAuthState, adultoMayorIdParam]);
+
+    const fetchRecordatorios = useCallback(async (isRefreshing = false) => {
         if (!isRefreshing) setIsLoading(true);
         setError(null);
 
@@ -83,10 +137,18 @@ export default function RecordatoriosScreen() {
                 return;
             }
 
-            console.log(`Obteniendo recordatorios para adulto_mayor_id: ${adultoMayorId}...`);
+            // Construir parámetros según si se filtró por adulto_mayor_id
+            const requestParams: any = {};
+            if (adultoMayorId) {
+                requestParams.adulto_mayor_id = adultoMayorId;
+                console.log(`Obteniendo recordatorios para adulto_mayor_id: ${adultoMayorId}...`);
+            } else {
+                console.log('Obteniendo todos los recordatorios del usuario...');
+            }
+
             const response = await axios.get<Recordatorio[]>(`${API_URL}/recordatorios`, {
                 headers: { Authorization: `Bearer ${token}` },
-                params: { adulto_mayor_id: adultoMayorId }
+                params: requestParams
             });
 
             setRecordatorios(response.data);
@@ -112,17 +174,55 @@ export default function RecordatoriosScreen() {
     }, [getToken, router, adultoMayorId, setAuthState]);
 
     useEffect(() => {
-        fetchRecordatorios();
-    }, [fetchRecordatorios]);
+        const initialize = async () => {
+            await fetchUserProfile();
+        };
+        initialize();
+    }, [fetchUserProfile]);
+
+    useEffect(() => {
+        if (adultoMayorId !== null || userProfile?.rol === 'adulto_mayor') {
+            fetchRecordatorios();
+        }
+    }, [adultoMayorId, userProfile, fetchRecordatorios]);
 
     const handleRefresh = () => {
         setRefreshing(true);
         fetchRecordatorios(true);
     };
 
+    const validateDateTime = (dateTime: Date): string | null => {
+        const now = new Date();
+
+        if (dateTime < now) {
+            return 'La fecha y hora del recordatorio no puede ser en el pasado.';
+        }
+
+        const oneYearFromNow = new Date();
+        oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+
+        if (dateTime > oneYearFromNow) {
+            return 'La fecha no puede ser mayor a un año en el futuro.';
+        }
+
+        return null;
+    };
+
     const handleAddOrUpdateReminder = async () => {
-        if (!currentReminder.titulo || !currentReminder.fecha_hora_programada || !adultoMayorId) {
+        if (!currentReminder.titulo || !currentReminder.fecha_hora_programada) {
             Alert.alert('Error', 'Completa el título y la fecha/hora.');
+            return;
+        }
+
+        if (!adultoMayorId) {
+            Alert.alert('Error', 'No se pudo determinar el adulto mayor.');
+            return;
+        }
+
+        // Validar fecha y hora
+        const validationError = validateDateTime(currentReminder.fecha_hora_programada);
+        if (validationError) {
+            Alert.alert('Error de validación', validationError);
             return;
         }
 
@@ -134,8 +234,8 @@ export default function RecordatoriosScreen() {
         }
 
         const dataToSend = {
-            titulo: currentReminder.titulo,
-            descripcion: currentReminder.descripcion || null,
+            titulo: currentReminder.titulo.trim(),
+            descripcion: currentReminder.descripcion?.trim() || null,
             adulto_mayor_id: adultoMayorId,
             fecha_hora_programada: currentReminder.fecha_hora_programada.toISOString(),
             frecuencia: currentReminder.frecuencia ?? 'una_vez',
@@ -205,10 +305,14 @@ export default function RecordatoriosScreen() {
     };
 
     const openAddModal = () => {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(9, 0, 0, 0);
+
         setCurrentReminder({
             titulo: '',
             descripcion: '',
-            fecha_hora_programada: new Date(),
+            fecha_hora_programada: tomorrow,
             frecuencia: 'una_vez',
         });
         setIsEditing(false);
@@ -225,6 +329,25 @@ export default function RecordatoriosScreen() {
         });
         setIsEditing(true);
         setModalVisible(true);
+    };
+
+    const handleDateChange = (event: any, selectedDate?: Date) => {
+        setShowDatePicker(Platform.OS === 'ios');
+        if (selectedDate) {
+            const currentTime = currentReminder.fecha_hora_programada || new Date();
+            selectedDate.setHours(currentTime.getHours(), currentTime.getMinutes(), 0, 0);
+            setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: selectedDate }));
+        }
+    };
+
+    const handleTimeChange = (event: any, selectedTime?: Date) => {
+        setShowTimePicker(Platform.OS === 'ios');
+        if (selectedTime) {
+            const currentDate = currentReminder.fecha_hora_programada || new Date();
+            const newDateTime = new Date(currentDate);
+            newDateTime.setHours(selectedTime.getHours(), selectedTime.getMinutes(), 0, 0);
+            setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDateTime }));
+        }
     };
 
     const formatFecha = (fecha: string) => {
@@ -266,26 +389,42 @@ export default function RecordatoriosScreen() {
                     </Text>
                 </View>
             </View>
-            <View style={styles.reminderActions}>
-                <Pressable onPress={() => openEditModal(recordatorio)} style={styles.actionButton}>
-                    <Edit2 size={20} color="#3b82f6" />
-                </Pressable>
-                <Pressable onPress={() => handleDeleteReminder(recordatorio.id)} style={styles.actionButton}>
-                    <Trash2 size={20} color="#ef4444" />
-                </Pressable>
-            </View>
+            {/* Solo mostrar botones de editar/eliminar si es cuidador */}
+            {userProfile?.rol === 'cuidador' && (
+                <View style={styles.reminderActions}>
+                    <Pressable onPress={() => openEditModal(recordatorio)} style={styles.actionButton}>
+                        <Edit2 size={20} color="#3b82f6" />
+                    </Pressable>
+                    <Pressable onPress={() => handleDeleteReminder(recordatorio.id)} style={styles.actionButton}>
+                        <Trash2 size={20} color="#ef4444" />
+                    </Pressable>
+                </View>
+            )}
         </View>
     );
 
+    // Determinar el título del header
+    const headerTitle = nombreAdultoMayor ? `Recordatorios - ${nombreAdultoMayor}` : 'Mis Recordatorios';
+
     return (
         <View style={styles.container}>
+            <CustomHeader
+                title="Recordatorios"
+                onMenuPress={() => setIsPanelOpen(true)}
+                showBackButton={true}
+            />
+
             <View style={styles.headerSection}>
-                <Text style={styles.headerTitle}>Recordatorios</Text>
-                <Text style={styles.headerSubtitle}>{nombreAdultoMayor}</Text>
-                <Pressable onPress={openAddModal} style={styles.addButton}>
-                    <PlusCircle size={24} color="white" />
-                    <Text style={styles.addButtonText}>Nuevo Recordatorio</Text>
-                </Pressable>
+                <Text style={styles.headerSubtitle}>
+                    {nombreAdultoMayor || (userProfile?.nombre || 'Cargando...')}
+                </Text>
+                {/* Solo mostrar botón de agregar si es cuidador */}
+                {userProfile?.rol === 'cuidador' && adultoMayorId && (
+                    <Pressable onPress={openAddModal} style={styles.addButton}>
+                        <PlusCircle size={24} color="white" />
+                        <Text style={styles.addButtonText}>Nuevo Recordatorio</Text>
+                    </Pressable>
+                )}
             </View>
 
             {isLoading && !refreshing ? (
@@ -312,7 +451,9 @@ export default function RecordatoriosScreen() {
                             <Calendar size={64} color="#9ca3af" />
                             <Text style={styles.emptyText}>No hay recordatorios</Text>
                             <Text style={styles.emptySubtext}>
-                                Crea un recordatorio para mantener un seguimiento de medicamentos, citas o tareas importantes.
+                                {userProfile?.rol === 'cuidador'
+                                    ? 'Crea un recordatorio para mantener un seguimiento de medicamentos, citas o tareas importantes.'
+                                    : 'No tienes recordatorios programados en este momento.'}
                             </Text>
                         </View>
                     ) : (
@@ -323,119 +464,138 @@ export default function RecordatoriosScreen() {
                 </ScrollView>
             )}
 
-            {/* Modal para Añadir/Editar Recordatorio */}
-            <Modal
-                animationType="slide"
-                transparent={true}
-                visible={modalVisible}
-                onRequestClose={() => setModalVisible(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>
-                                {isEditing ? 'Editar Recordatorio' : 'Nuevo Recordatorio'}
-                            </Text>
-                            <Pressable onPress={() => setModalVisible(false)}>
-                                <X size={24} color="#6b7280" />
-                            </Pressable>
-                        </View>
-
-                        <ScrollView>
-                            <Text style={styles.modalLabel}>Para:</Text>
-                            <Text style={styles.modalInfo}>{nombreAdultoMayor}</Text>
-
-                            <Text style={styles.modalLabel}>Título *</Text>
-                            <TextInput
-                                style={styles.modalInput}
-                                placeholder="Ej: Tomar medicamento"
-                                value={currentReminder.titulo || ''}
-                                onChangeText={(text) => setCurrentReminder(prev => ({ ...prev, titulo: text }))}
-                            />
-
-                            <Text style={styles.modalLabel}>Descripción (Opcional)</Text>
-                            <TextInput
-                                style={[styles.modalInput, styles.textArea]}
-                                placeholder="Ej: Pastilla azul con el desayuno"
-                                value={currentReminder.descripcion || ''}
-                                onChangeText={(text) => setCurrentReminder(prev => ({ ...prev, descripcion: text }))}
-                                multiline
-                                numberOfLines={3}
-                            />
-
-                            <Text style={styles.modalLabel}>Fecha *</Text>
-                            <TextInput
-                                style={styles.modalInput}
-                                placeholder="YYYY-MM-DD"
-                                value={currentReminder.fecha_hora_programada?.toISOString().split('T')[0] || ''}
-                                onChangeText={(text) => {
-                                    const [year, month, day] = text.split('-').map(Number);
-                                    if (year && month && day) {
-                                        const newDate = currentReminder.fecha_hora_programada ? new Date(currentReminder.fecha_hora_programada) : new Date();
-                                        newDate.setFullYear(year, month - 1, day);
-                                        setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
-                                    }
-                                }}
-                            />
-
-                            <Text style={styles.modalLabel}>Hora *</Text>
-                            <TextInput
-                                style={styles.modalInput}
-                                placeholder="HH:MM (24 horas)"
-                                value={currentReminder.fecha_hora_programada ?
-                                    `${String(currentReminder.fecha_hora_programada.getHours()).padStart(2, '0')}:${String(currentReminder.fecha_hora_programada.getMinutes()).padStart(2, '0')}` : ''}
-                                onChangeText={(text) => {
-                                    const [hours, minutes] = text.split(':').map(Number);
-                                    if (!isNaN(hours) && !isNaN(minutes)) {
-                                        const newDate = currentReminder.fecha_hora_programada ? new Date(currentReminder.fecha_hora_programada) : new Date();
-                                        newDate.setHours(hours, minutes, 0, 0);
-                                        setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
-                                    }
-                                }}
-                            />
-
-                            <Text style={styles.modalLabel}>Frecuencia *</Text>
-                            <View style={styles.frecuenciaContainer}>
-                                {frecuenciaOptions.map((option) => (
-                                    <Pressable
-                                        key={option.value}
-                                        style={[
-                                            styles.frecuenciaOption,
-                                            currentReminder.frecuencia === option.value && styles.frecuenciaOptionActive
-                                        ]}
-                                        onPress={() => setCurrentReminder(prev => ({ ...prev, frecuencia: option.value as any }))}
-                                    >
-                                        <Text style={[
-                                            styles.frecuenciaOptionText,
-                                            currentReminder.frecuencia === option.value && styles.frecuenciaOptionTextActive
-                                        ]}>
-                                            {option.label}
-                                        </Text>
-                                    </Pressable>
-                                ))}
+            {/* Modal para Añadir/Editar Recordatorio - Solo para cuidadores */}
+            {userProfile?.rol === 'cuidador' && (
+                <Modal
+                    animationType="slide"
+                    transparent={true}
+                    visible={modalVisible}
+                    onRequestClose={() => setModalVisible(false)}
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>
+                                    {isEditing ? 'Editar Recordatorio' : 'Nuevo Recordatorio'}
+                                </Text>
+                                <Pressable onPress={() => setModalVisible(false)}>
+                                    <X size={24} color="#6b7280" />
+                                </Pressable>
                             </View>
 
-                            <View style={styles.modalButtons}>
+                            <ScrollView>
+                                <Text style={styles.modalLabel}>Para:</Text>
+                                <Text style={styles.modalInfo}>{nombreAdultoMayor}</Text>
+
+                                <Text style={styles.modalLabel}>Título *</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    placeholder="Ej: Tomar medicamento"
+                                    value={currentReminder.titulo || ''}
+                                    onChangeText={(text) => setCurrentReminder(prev => ({ ...prev, titulo: text }))}
+                                />
+
+                                <Text style={styles.modalLabel}>Descripción (Opcional)</Text>
+                                <TextInput
+                                    style={[styles.modalInput, styles.textArea]}
+                                    placeholder="Ej: Pastilla azul con el desayuno"
+                                    value={currentReminder.descripcion || ''}
+                                    onChangeText={(text) => setCurrentReminder(prev => ({ ...prev, descripcion: text }))}
+                                    multiline
+                                    numberOfLines={3}
+                                />
+
+                                <Text style={styles.modalLabel}>Fecha *</Text>
                                 <Pressable
-                                    style={[styles.modalButton, styles.cancelButton]}
-                                    onPress={() => setModalVisible(false)}
+                                    style={styles.dateButton}
+                                    onPress={() => setShowDatePicker(true)}
                                 >
-                                    <Text style={styles.cancelButtonText}>Cancelar</Text>
-                                </Pressable>
-                                <Pressable
-                                    style={[styles.modalButton, styles.saveButton, isSaving && styles.saveButtonDisabled]}
-                                    onPress={handleAddOrUpdateReminder}
-                                    disabled={isSaving}
-                                >
-                                    <Text style={styles.saveButtonText}>
-                                        {isSaving ? 'Guardando...' : isEditing ? 'Actualizar' : 'Crear'}
+                                    <Calendar size={20} color="#6b7280" />
+                                    <Text style={styles.dateButtonText}>
+                                        {currentReminder.fecha_hora_programada
+                                            ? formatFecha(currentReminder.fecha_hora_programada.toISOString())
+                                            : 'Seleccionar fecha'}
                                     </Text>
                                 </Pressable>
-                            </View>
-                        </ScrollView>
+
+                                {showDatePicker && (
+                                    <DateTimePicker
+                                        value={currentReminder.fecha_hora_programada || new Date()}
+                                        mode="date"
+                                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                                        onChange={handleDateChange}
+                                        minimumDate={new Date()}
+                                    />
+                                )}
+
+                                <Text style={styles.modalLabel}>Hora *</Text>
+                                <Pressable
+                                    style={styles.dateButton}
+                                    onPress={() => setShowTimePicker(true)}
+                                >
+                                    <Clock size={20} color="#6b7280" />
+                                    <Text style={styles.dateButtonText}>
+                                        {currentReminder.fecha_hora_programada
+                                            ? formatHora(currentReminder.fecha_hora_programada.toISOString())
+                                            : 'Seleccionar hora'}
+                                    </Text>
+                                </Pressable>
+
+                                {showTimePicker && (
+                                    <DateTimePicker
+                                        value={currentReminder.fecha_hora_programada || new Date()}
+                                        mode="time"
+                                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                                        onChange={handleTimeChange}
+                                    />
+                                )}
+
+                                <Text style={styles.modalLabel}>Frecuencia *</Text>
+                                <View style={styles.frecuenciaContainer}>
+                                    {frecuenciaOptions.map((option) => (
+                                        <Pressable
+                                            key={option.value}
+                                            style={[
+                                                styles.frecuenciaOption,
+                                                currentReminder.frecuencia === option.value && styles.frecuenciaOptionActive
+                                            ]}
+                                            onPress={() => setCurrentReminder(prev => ({ ...prev, frecuencia: option.value as any }))}
+                                        >
+                                            <Text style={[
+                                                styles.frecuenciaOptionText,
+                                                currentReminder.frecuencia === option.value && styles.frecuenciaOptionTextActive
+                                            ]}>
+                                                {option.label}
+                                            </Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+
+                                <View style={styles.modalButtons}>
+                                    <Pressable
+                                        style={[styles.modalButton, styles.cancelButton]}
+                                        onPress={() => setModalVisible(false)}
+                                    >
+                                        <Text style={styles.cancelButtonText}>Cancelar</Text>
+                                    </Pressable>
+                                    <Pressable
+                                        style={[styles.modalButton, styles.saveButton, isSaving && styles.saveButtonDisabled]}
+                                        onPress={handleAddOrUpdateReminder}
+                                        disabled={isSaving}
+                                    >
+                                        <Text style={styles.saveButtonText}>
+                                            {isSaving ? 'Guardando...' : isEditing ? 'Actualizar' : 'Crear'}
+                                        </Text>
+                                    </Pressable>
+                                </View>
+                            </ScrollView>
+                        </View>
                     </View>
-                </View>
-            </Modal>
+                </Modal>
+            )}
+
+            {/* Panel lateral */}
+            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
         </View>
     );
 }
@@ -448,19 +608,14 @@ const styles = StyleSheet.create({
     headerSection: {
         backgroundColor: '#7c3aed',
         padding: 20,
-        paddingTop: 40,
+        paddingTop: 15,
         paddingBottom: 25,
     },
-    headerTitle: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: 'white',
-        marginBottom: 4,
-    },
     headerSubtitle: {
-        fontSize: 16,
+        fontSize: 18,
         color: '#e9d5ff',
         marginBottom: 16,
+        fontWeight: '600',
     },
     addButton: {
         backgroundColor: '#8b5cf6',

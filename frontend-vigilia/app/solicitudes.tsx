@@ -7,7 +7,8 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import Header from '../components/Header';
+import CustomHeader from '../components/CustomHeader';
+import SlidingPanel from '../components/Slidingpanel';
 import { UserPlus, Check, X, Clock, Mail } from 'lucide-react-native';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -31,6 +32,7 @@ export default function SolicitudesScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     const getToken = useCallback(async (): Promise<string | null> => {
         const tokenKey = 'userToken';
@@ -191,7 +193,7 @@ export default function SolicitudesScreen() {
         <View key={solicitud.id} style={styles.card}>
             <View style={styles.cardHeader}>
                 <View style={styles.headerLeft}>
-                    <UserPlus size={20} color="#2563eb" />
+                    <UserPlus size={20} color="#7c3aed" />
                     <Text style={styles.cardTitle}>
                         {solicitud.nombre_cuidador || 'Cuidador'}
                     </Text>
@@ -250,11 +252,10 @@ export default function SolicitudesScreen() {
 
     return (
         <View style={{ flex: 1 }}>
-            <Header
+            <CustomHeader
                 title="Solicitudes de Cuidado"
-                backgroundColor="#2563eb"
+                onMenuPress={() => setIsPanelOpen(true)}
                 showBackButton={true}
-                onBackPress={() => router.back()}
             />
 
             <ScrollView
@@ -265,7 +266,7 @@ export default function SolicitudesScreen() {
             >
                 {loading && !refreshing ? (
                     <View style={styles.centerContainer}>
-                        <ActivityIndicator size="large" color="#2563eb" />
+                        <ActivityIndicator size="large" color="#7c3aed" />
                         <Text style={styles.loadingText}>Cargando solicitudes...</Text>
                     </View>
                 ) : error ? (
@@ -294,6 +295,7 @@ export default function SolicitudesScreen() {
                     </>
                 )}
             </ScrollView>
+            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
         </View>
     );
 }
@@ -322,7 +324,7 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     retryButton: {
-        backgroundColor: '#2563eb',
+        backgroundColor: '#7c3aed',
         paddingVertical: 10,
         paddingHorizontal: 20,
         borderRadius: 8,
@@ -349,7 +351,7 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#2563eb',
+        color: '#7c3aed',
         marginBottom: 15,
     },
     card: {
