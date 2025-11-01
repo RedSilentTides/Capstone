@@ -8,10 +8,16 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import DatePicker from 'react-native-ui-datepicker';
+import dayjs from 'dayjs';
+import 'dayjs/locale/es';
 import { PlusCircle, Calendar, Clock, Repeat, Trash2, Edit2, X } from 'lucide-react-native';
 import { useAuth } from '../_layout';
 import CustomHeader from '../../components/CustomHeader';
 import SlidingPanel from '../../components/Slidingpanel';
+
+// Configurar dayjs en español
+dayjs.locale('es');
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -83,9 +89,13 @@ export default function RecordatoriosScreen() {
     const [adultoMayorId, setAdultoMayorId] = useState<number | null>(adultoMayorIdParam);
     const [nombreAdultoMayor, setNombreAdultoMayor] = useState<string>(nombreParam);
 
-    // Estados para el DateTimePicker
+    // Estados para el DateTimePicker y Calendario
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [showTimePicker, setShowTimePicker] = useState(false);
+    const [showCalendar, setShowCalendar] = useState(false);
+
+    // Estado para días de la semana seleccionados (para frecuencia semanal)
+    const [selectedDays, setSelectedDays] = useState<number[]>([]); // 0=Domingo, 1=Lunes, etc.
 
     const getToken = useCallback(async (): Promise<string | null> => {
         const tokenKey = 'userToken';
@@ -248,6 +258,8 @@ export default function RecordatoriosScreen() {
             adulto_mayor_id: adultoMayorId,
             fecha_hora_programada: currentReminder.fecha_hora_programada.toISOString(),
             frecuencia: currentReminder.frecuencia ?? 'una_vez',
+            tipo_recordatorio: currentReminder.tipo_recordatorio ?? 'medicamento',
+            dias_semana: selectedDays.length > 0 ? selectedDays : null, // Solo enviar si hay días seleccionados
         };
 
         console.log('📤 Datos a enviar:', JSON.stringify(dataToSend, null, 2));
@@ -530,49 +542,145 @@ export default function RecordatoriosScreen() {
                                     numberOfLines={3}
                                 />
 
-                                <Text style={styles.modalLabel}>Fecha *</Text>
-                                <Pressable
-                                    style={styles.dateButton}
-                                    onPress={() => setShowDatePicker(true)}
-                                >
-                                    <Calendar size={20} color="#6b7280" />
-                                    <Text style={styles.dateButtonText}>
-                                        {currentReminder.fecha_hora_programada
-                                            ? formatFecha(currentReminder.fecha_hora_programada.toISOString())
-                                            : 'Seleccionar fecha'}
-                                    </Text>
-                                </Pressable>
+                                {selectedDays.length === 0 ? (
+                                    <>
+                                        {/* Si NO hay días seleccionados: Mostrar Fecha completa + Hora */}
+                                        <Text style={styles.modalLabel}>Fecha y Hora *</Text>
 
-                                {showDatePicker && (
-                                    <DateTimePicker
-                                        value={currentReminder.fecha_hora_programada || new Date()}
-                                        mode="date"
-                                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                                        onChange={handleDateChange}
-                                        minimumDate={new Date()}
-                                    />
-                                )}
+                                        <Pressable
+                                            style={styles.dateButton}
+                                            onPress={() => setShowCalendar(!showCalendar)}
+                                        >
+                                            <Calendar size={20} color="#7c3aed" />
+                                            <Text style={styles.dateButtonText}>
+                                                {currentReminder.fecha_hora_programada
+                                                    ? `${formatFecha(currentReminder.fecha_hora_programada.toISOString())} ${formatHora(currentReminder.fecha_hora_programada.toISOString())}`
+                                                    : 'Seleccionar fecha y hora'}
+                                            </Text>
+                                        </Pressable>
 
-                                <Text style={styles.modalLabel}>Hora *</Text>
-                                <Pressable
-                                    style={styles.dateButton}
-                                    onPress={() => setShowTimePicker(true)}
-                                >
-                                    <Clock size={20} color="#6b7280" />
-                                    <Text style={styles.dateButtonText}>
-                                        {currentReminder.fecha_hora_programada
-                                            ? formatHora(currentReminder.fecha_hora_programada.toISOString())
-                                            : 'Seleccionar hora'}
-                                    </Text>
-                                </Pressable>
+                                        {showCalendar && (
+                                            <View style={styles.calendarContainer}>
+                                                <DatePicker
+                                                    mode="single"
+                                                    locale="es"
+                                                    date={currentReminder.fecha_hora_programada ? dayjs(currentReminder.fecha_hora_programada).toDate() : undefined}
+                                                    onChange={(params: any) => {
+                                                        if (params.date) {
+                                                            const selectedDate = new Date(params.date);
+                                                            const currentDateTime = currentReminder.fecha_hora_programada || new Date();
+                                                            selectedDate.setHours(currentDateTime.getHours(), currentDateTime.getMinutes(), 0, 0);
+                                                            setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: selectedDate }));
+                                                        }
+                                                    }}
+                                                    minDate={dayjs().toDate()}
+                                                    maxDate={dayjs().add(1, 'year').toDate()}
+                                                    selectedItemColor="#7c3aed"
+                                                    calendarTextStyle={{ color: '#111827', fontSize: 14 }}
+                                                    headerTextStyle={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 16 }}
+                                                    weekDaysTextStyle={{ color: '#6b7280', fontWeight: '600', fontSize: 13 }}
+                                                    selectedTextStyle={{ color: '#ffffff', fontWeight: 'bold' }}
+                                                    todayTextStyle={{ color: '#7c3aed', fontWeight: 'bold' }}
+                                                    todayContainerStyle={{ borderColor: '#7c3aed', borderWidth: 1 }}
+                                                />
 
-                                {showTimePicker && (
-                                    <DateTimePicker
-                                        value={currentReminder.fecha_hora_programada || new Date()}
-                                        mode="time"
-                                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                                        onChange={handleTimeChange}
-                                    />
+                                                <View style={styles.timePickerContainer}>
+                                                    <Text style={styles.timePickerLabel}>Selecciona la hora:</Text>
+                                                    <View style={styles.timeInputRow}>
+                                                        <TextInput
+                                                            style={styles.timeInput}
+                                                            value={currentReminder.fecha_hora_programada
+                                                                ? String(currentReminder.fecha_hora_programada.getHours()).padStart(2, '0')
+                                                                : '00'}
+                                                            onChangeText={(text) => {
+                                                                const hours = parseInt(text) || 0;
+                                                                if (hours >= 0 && hours < 24) {
+                                                                    const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                                    newDate.setHours(hours);
+                                                                    setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                                }
+                                                            }}
+                                                            keyboardType="numeric"
+                                                            maxLength={2}
+                                                            placeholder="HH"
+                                                        />
+                                                        <Text style={styles.timeSeparator}>:</Text>
+                                                        <TextInput
+                                                            style={styles.timeInput}
+                                                            value={currentReminder.fecha_hora_programada
+                                                                ? String(currentReminder.fecha_hora_programada.getMinutes()).padStart(2, '0')
+                                                                : '00'}
+                                                            onChangeText={(text) => {
+                                                                const minutes = parseInt(text) || 0;
+                                                                if (minutes >= 0 && minutes < 60) {
+                                                                    const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                                    newDate.setMinutes(minutes);
+                                                                    setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                                }
+                                                            }}
+                                                            keyboardType="numeric"
+                                                            maxLength={2}
+                                                            placeholder="MM"
+                                                        />
+                                                    </View>
+                                                </View>
+
+                                                <Pressable
+                                                    style={styles.closeCalendarButton}
+                                                    onPress={() => setShowCalendar(false)}
+                                                >
+                                                    <Text style={styles.closeCalendarButtonText}>Confirmar</Text>
+                                                </Pressable>
+                                            </View>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Si HAY días seleccionados: Solo mostrar selector de Hora */}
+                                        <Text style={styles.modalLabel}>Hora del recordatorio *</Text>
+                                        <View style={styles.timePickerContainer}>
+                                            <View style={styles.timeInputRow}>
+                                                <TextInput
+                                                    style={styles.timeInput}
+                                                    value={currentReminder.fecha_hora_programada
+                                                        ? String(currentReminder.fecha_hora_programada.getHours()).padStart(2, '0')
+                                                        : '09'}
+                                                    onChangeText={(text) => {
+                                                        const hours = parseInt(text) || 0;
+                                                        if (hours >= 0 && hours < 24) {
+                                                            const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                            newDate.setHours(hours);
+                                                            setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                        }
+                                                    }}
+                                                    keyboardType="numeric"
+                                                    maxLength={2}
+                                                    placeholder="HH"
+                                                />
+                                                <Text style={styles.timeSeparator}>:</Text>
+                                                <TextInput
+                                                    style={styles.timeInput}
+                                                    value={currentReminder.fecha_hora_programada
+                                                        ? String(currentReminder.fecha_hora_programada.getMinutes()).padStart(2, '0')
+                                                        : '00'}
+                                                    onChangeText={(text) => {
+                                                        const minutes = parseInt(text) || 0;
+                                                        if (minutes >= 0 && minutes < 60) {
+                                                            const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                            newDate.setMinutes(minutes);
+                                                            setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                        }
+                                                    }}
+                                                    keyboardType="numeric"
+                                                    maxLength={2}
+                                                    placeholder="MM"
+                                                />
+                                            </View>
+                                            <Text style={styles.helperText}>
+                                                Esta hora se aplicará a: {selectedDays.map(d => ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d]).join(', ')}
+                                            </Text>
+                                        </View>
+                                    </>
                                 )}
 
                                 <Text style={styles.modalLabel}>Tipo de Recordatorio *</Text>
@@ -600,14 +708,19 @@ export default function RecordatoriosScreen() {
 
                                 <Text style={styles.modalLabel}>Frecuencia *</Text>
                                 <View style={styles.frecuenciaContainer}>
-                                    {frecuenciaOptions.map((option) => (
+                                    {frecuenciaOptions.filter(opt => opt.value !== 'semanal').map((option) => (
                                         <Pressable
                                             key={option.value}
                                             style={[
                                                 styles.frecuenciaOption,
                                                 currentReminder.frecuencia === option.value && styles.frecuenciaOptionActive
                                             ]}
-                                            onPress={() => setCurrentReminder(prev => ({ ...prev, frecuencia: option.value as any }))}
+                                            onPress={() => {
+                                                setCurrentReminder(prev => ({ ...prev, frecuencia: option.value as any }));
+                                                if (option.value !== 'semanal') {
+                                                    setSelectedDays([]);
+                                                }
+                                            }}
                                         >
                                             <Text style={[
                                                 styles.frecuenciaOptionText,
@@ -618,6 +731,53 @@ export default function RecordatoriosScreen() {
                                         </Pressable>
                                     ))}
                                 </View>
+
+                                {/* Selector de días de la semana */}
+                                <Text style={styles.modalLabel}>Repetir ciertos días (Semanal)</Text>
+                                <View style={styles.weekDaysContainer}>
+                                    {['D', 'L', 'M', 'X', 'J', 'V', 'S'].map((day, index) => {
+                                        const isSelected = selectedDays.includes(index);
+                                        const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+                                        return (
+                                            <Pressable
+                                                key={index}
+                                                style={[
+                                                    styles.weekDayButton,
+                                                    isSelected && styles.weekDayButtonActive
+                                                ]}
+                                                onPress={() => {
+                                                    setSelectedDays(prev => {
+                                                        const newDays = isSelected
+                                                            ? prev.filter(d => d !== index)
+                                                            : [...prev, index].sort();
+
+                                                        // Si hay días seleccionados, cambiar frecuencia a semanal
+                                                        if (newDays.length > 0) {
+                                                            setCurrentReminder(p => ({ ...p, frecuencia: 'semanal' }));
+                                                        } else if (currentReminder.frecuencia === 'semanal') {
+                                                            setCurrentReminder(p => ({ ...p, frecuencia: 'una_vez' }));
+                                                        }
+
+                                                        return newDays;
+                                                    });
+                                                }}
+                                            >
+                                                <Text style={[
+                                                    styles.weekDayText,
+                                                    isSelected && styles.weekDayTextActive
+                                                ]}>
+                                                    {day}
+                                                </Text>
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+                                {selectedDays.length > 0 && (
+                                    <Text style={styles.selectedDaysInfo}>
+                                        Se repetirá: {selectedDays.map(d => ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][d]).join(', ')}
+                                    </Text>
+                                )}
 
                                 <View style={styles.modalButtons}>
                                     <Pressable
@@ -971,5 +1131,102 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: 'white',
+    },
+    calendarContainer: {
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        padding: 16,
+        marginVertical: 12,
+        borderWidth: 1,
+        borderColor: '#e5e7eb',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    timePickerContainer: {
+        marginTop: 20,
+        paddingTop: 20,
+        borderTopWidth: 1,
+        borderTopColor: '#e5e7eb',
+    },
+    timePickerLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#374151',
+        marginBottom: 12,
+        textAlign: 'center',
+    },
+    timeInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    timeInput: {
+        backgroundColor: '#f9fafb',
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 24,
+        fontWeight: '600',
+        color: '#111827',
+        textAlign: 'center',
+        width: 70,
+    },
+    timeSeparator: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        color: '#6b7280',
+    },
+    closeCalendarButton: {
+        backgroundColor: '#7c3aed',
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginTop: 20,
+        alignItems: 'center',
+    },
+    closeCalendarButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    weekDaysContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        gap: 8,
+    },
+    weekDayButton: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 8,
+        borderWidth: 2,
+        borderColor: '#d1d5db',
+        backgroundColor: '#f9fafb',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    weekDayButtonActive: {
+        backgroundColor: '#7c3aed',
+        borderColor: '#7c3aed',
+    },
+    weekDayText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#6b7280',
+    },
+    weekDayTextActive: {
+        color: 'white',
+    },
+    selectedDaysInfo: {
+        fontSize: 13,
+        color: '#7c3aed',
+        fontWeight: '500',
+        textAlign: 'center',
+        marginBottom: 12,
+        fontStyle: 'italic',
     },
 });

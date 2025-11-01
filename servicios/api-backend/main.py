@@ -127,6 +127,7 @@ class RecordatorioCreate(BaseModel):
     fecha_hora_programada: datetime # FastAPI convertirá string ISO a datetime
     frecuencia: str = 'una_vez' # Permitimos los valores del CHECK constraint
     tipo_recordatorio: str = 'medicamento' # Nuevo campo con valor por defecto
+    dias_semana: list[int] | None = None # Array de días (0=Domingo, 6=Sábado)
 
     # Validador para asegurar que la frecuencia sea correcta
     @validator('frecuencia')
@@ -144,6 +145,22 @@ class RecordatorioCreate(BaseModel):
             raise ValueError(f'Tipo de recordatorio debe ser uno de: {", ".join(allowed)}')
         return v
 
+    # Validador para asegurar que dias_semana contenga valores válidos (0-6)
+    @validator('dias_semana')
+    def dias_semana_validos(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, list):
+            raise ValueError('dias_semana debe ser una lista de enteros')
+        if len(v) == 0:
+            return None  # Lista vacía se convierte en None
+        # Validar que todos los valores estén entre 0 y 6
+        for dia in v:
+            if not isinstance(dia, int) or dia < 0 or dia > 6:
+                raise ValueError('Cada día debe ser un número entre 0 (Domingo) y 6 (Sábado)')
+        # Eliminar duplicados y ordenar
+        return sorted(list(set(v)))
+
 # Modelo para recibir datos al actualizar (todos los campos opcionales)
 class RecordatorioUpdate(BaseModel):
     titulo: constr(min_length=1, max_length=150) | None = None
@@ -152,6 +169,7 @@ class RecordatorioUpdate(BaseModel):
     frecuencia: str | None = None
     estado: str | None = None # Permitimos actualizar estado también
     tipo_recordatorio: str | None = None # Nuevo campo opcional para actualización
+    dias_semana: list[int] | None = None # Array de días (0=Domingo, 6=Sábado)
 
     @validator('frecuencia')
     def frecuencia_valida_update(cls, v):
@@ -182,6 +200,21 @@ class RecordatorioUpdate(BaseModel):
             raise ValueError(f'Tipo de recordatorio debe ser uno de: {", ".join(allowed)}')
         return v
 
+    @validator('dias_semana')
+    def dias_semana_validos_update(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, list):
+            raise ValueError('dias_semana debe ser una lista de enteros')
+        if len(v) == 0:
+            return None  # Lista vacía se convierte en None
+        # Validar que todos los valores estén entre 0 y 6
+        for dia in v:
+            if not isinstance(dia, int) or dia < 0 or dia > 6:
+                raise ValueError('Cada día debe ser un número entre 0 (Domingo) y 6 (Sábado)')
+        # Eliminar duplicados y ordenar
+        return sorted(list(set(v)))
+
 
 # Modelo para la respuesta al obtener recordatorios (coincide con la tabla)
 class RecordatorioInfo(BaseModel):
@@ -193,6 +226,7 @@ class RecordatorioInfo(BaseModel):
     frecuencia: str
     estado: str
     tipo_recordatorio: str | None = 'medicamento' # Nuevo campo: medicamento, cita_medica, ejercicio, hidratacion, comida, consejo_salud, otro
+    dias_semana: list[int] | None = None # Array de días (0=Domingo, 6=Sábado)
     fecha_creacion: datetime
 
 # --- Seguridad y Autenticación ---
@@ -629,25 +663,36 @@ def create_recordatorio(
     recordatorio_data: RecordatorioCreate, 
     current_user: dict = Depends(get_current_user)
 ):
-    """Crea un nuevo recordatorio para un adulto mayor asociado al cuidador."""
-    user_info = read_users_me(current_user) # Obtiene id y rol del cuidador
-    
-    # Solo cuidadores o admins pueden crear
-    if user_info.rol not in ['cuidador', 'administrador']:
+    """Crea un nuevo recordatorio para un adulto mayor."""
+    user_info = read_users_me(current_user)
+
+    # Permitir a cuidadores, admins y adultos mayores crear recordatorios
+    if user_info.rol not in ['cuidador', 'administrador', 'adulto_mayor']:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
 
-    print(f"Intentando crear recordatorio para adulto_mayor_id: {recordatorio_data.adulto_mayor_id} por cuidador_id: {user_info.id}")
+    print(f"Intentando crear recordatorio para adulto_mayor_id: {recordatorio_data.adulto_mayor_id} por usuario_id: {user_info.id} (rol: {user_info.rol})")
     try:
         with engine.connect() as db_conn:
-            # Verificar permiso: ¿Este cuidador cuida a este adulto mayor?
-            check_caregiver_relationship(db_conn, user_info.id, recordatorio_data.adulto_mayor_id)
+            # Verificar permiso según el rol
+            if user_info.rol == 'cuidador':
+                # Verificar que el cuidador cuida a este adulto mayor
+                check_caregiver_relationship(db_conn, user_info.id, recordatorio_data.adulto_mayor_id)
+            elif user_info.rol == 'adulto_mayor':
+                # Verificar que el adulto mayor está creando un recordatorio para sí mismo
+                query_check = text("SELECT id FROM adultos_mayores WHERE id = :adulto_mayor_id AND usuario_id = :usuario_id")
+                result_check = db_conn.execute(query_check, {
+                    "adulto_mayor_id": recordatorio_data.adulto_mayor_id,
+                    "usuario_id": user_info.id
+                }).fetchone()
+                if not result_check:
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No puedes crear recordatorios para otros usuarios.")
             
             trans = db_conn.begin()
             try:
                 query = text("""
-                    INSERT INTO recordatorios (adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, tipo_recordatorio)
-                    VALUES (:adulto_mayor_id, :titulo, :descripcion, :fecha_hora_programada, :frecuencia, :tipo_recordatorio)
-                    RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, fecha_creacion
+                    INSERT INTO recordatorios (adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, tipo_recordatorio, dias_semana)
+                    VALUES (:adulto_mayor_id, :titulo, :descripcion, :fecha_hora_programada, :frecuencia, :tipo_recordatorio, :dias_semana)
+                    RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, dias_semana, fecha_creacion
                 """)
                 result = db_conn.execute(query, recordatorio_data.model_dump()).fetchone()
                 trans.commit()
@@ -689,7 +734,7 @@ def get_recordatorios(
 
             # Construcción base de la consulta
             select_clause = """
-                SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.tipo_recordatorio, r.fecha_creacion
+                SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.tipo_recordatorio, r.dias_semana, r.fecha_creacion
                 FROM recordatorios r """
             where_clauses = []
             params = {"limit": limit, "offset": skip}
@@ -765,7 +810,7 @@ def update_recordatorio(
 ):
     """Actualiza un recordatorio existente."""
     user_info = read_users_me(current_user)
-    if user_info.rol not in ['cuidador', 'administrador']:
+    if user_info.rol not in ['cuidador', 'administrador', 'adulto_mayor']:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
 
     # Prepara campos a actualizar (solo los enviados)
@@ -774,22 +819,43 @@ def update_recordatorio(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
 
     set_clause = ", ".join([f"{key} = :{key}" for key in update_fields.keys()])
-    params = {**update_fields, "recordatorio_id": recordatorio_id, "cuidador_id": user_info.id}
-    
-    # Construimos la consulta con verificación de permiso anidada
-    query = text(f"""
-        UPDATE recordatorios
-        SET {set_clause}
-        WHERE id = :recordatorio_id 
-        AND adulto_mayor_id IN ( -- Asegura que el recordatorio pertenece a un AM del cuidador
-             SELECT cam.adulto_mayor_id 
-             FROM cuidadores_adultos_mayores cam 
-             WHERE cam.usuario_id = :cuidador_id
-           )
-        RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, fecha_creacion
-    """)
+    params = {**update_fields, "recordatorio_id": recordatorio_id, "usuario_id": user_info.id}
 
-    print(f"Intentando actualizar recordatorio id: {recordatorio_id} por cuidador_id: {user_info.id}")
+    # Construimos la consulta con verificación de permiso según rol
+    if user_info.rol == 'cuidador':
+        # Cuidador: verificar que el recordatorio pertenece a un AM que cuida
+        query = text(f"""
+            UPDATE recordatorios
+            SET {set_clause}
+            WHERE id = :recordatorio_id
+            AND adulto_mayor_id IN (
+                 SELECT cam.adulto_mayor_id
+                 FROM cuidadores_adultos_mayores cam
+                 WHERE cam.usuario_id = :usuario_id
+               )
+            RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, dias_semana, fecha_creacion
+        """)
+    elif user_info.rol == 'adulto_mayor':
+        # Adulto mayor: verificar que el recordatorio es suyo
+        query = text(f"""
+            UPDATE recordatorios
+            SET {set_clause}
+            WHERE id = :recordatorio_id
+            AND adulto_mayor_id IN (
+                 SELECT id FROM adultos_mayores WHERE usuario_id = :usuario_id
+               )
+            RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, dias_semana, fecha_creacion
+        """)
+    else:
+        # Administrador: sin restricciones
+        query = text(f"""
+            UPDATE recordatorios
+            SET {set_clause}
+            WHERE id = :recordatorio_id
+            RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, dias_semana, fecha_creacion
+        """)
+
+    print(f"Intentando actualizar recordatorio id: {recordatorio_id} por usuario_id: {user_info.id} (rol: {user_info.rol})")
     try:
         with engine.connect() as db_conn:
             trans = db_conn.begin()
@@ -826,23 +892,43 @@ def delete_recordatorio(
 ):
     """Elimina un recordatorio existente."""
     user_info = read_users_me(current_user)
-    if user_info.rol not in ['cuidador', 'administrador']:
+    if user_info.rol not in ['cuidador', 'administrador', 'adulto_mayor']:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
 
-    # Consulta con verificación de permiso anidada
-    query = text("""
-        DELETE FROM recordatorios
-        WHERE id = :recordatorio_id
-        AND adulto_mayor_id IN ( -- Asegura que pertenece a un AM del cuidador
-             SELECT cam.adulto_mayor_id 
-             FROM cuidadores_adultos_mayores cam 
-             WHERE cam.usuario_id = :cuidador_id
-           )
-        RETURNING id -- Devolver el ID ayuda a saber si se borró algo
-    """)
-    params = {"recordatorio_id": recordatorio_id, "cuidador_id": user_info.id}
+    # Consulta con verificación de permiso según rol
+    params = {"recordatorio_id": recordatorio_id, "usuario_id": user_info.id}
 
-    print(f"Intentando eliminar recordatorio id: {recordatorio_id} por cuidador_id: {user_info.id}")
+    if user_info.rol == 'cuidador':
+        # Cuidador: verificar que el recordatorio pertenece a un AM que cuida
+        query = text("""
+            DELETE FROM recordatorios
+            WHERE id = :recordatorio_id
+            AND adulto_mayor_id IN (
+                 SELECT cam.adulto_mayor_id
+                 FROM cuidadores_adultos_mayores cam
+                 WHERE cam.usuario_id = :usuario_id
+               )
+            RETURNING id
+        """)
+    elif user_info.rol == 'adulto_mayor':
+        # Adulto mayor: verificar que el recordatorio es suyo
+        query = text("""
+            DELETE FROM recordatorios
+            WHERE id = :recordatorio_id
+            AND adulto_mayor_id IN (
+                 SELECT id FROM adultos_mayores WHERE usuario_id = :usuario_id
+               )
+            RETURNING id
+        """)
+    else:
+        # Administrador: sin restricciones
+        query = text("""
+            DELETE FROM recordatorios
+            WHERE id = :recordatorio_id
+            RETURNING id
+        """)
+
+    print(f"Intentando eliminar recordatorio id: {recordatorio_id} por usuario_id: {user_info.id} (rol: {user_info.rol})")
     try:
         with engine.connect() as db_conn:
             trans = db_conn.begin()
