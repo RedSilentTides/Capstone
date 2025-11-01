@@ -440,20 +440,34 @@ def get_alert_configuration(current_user: dict = Depends(get_current_user)):
     print(f"Obteniendo configuración para usuario_id: {user_info.id} (firebase_uid: {user_uid})")
     try:
         with engine.connect() as db_conn:
-            # Buscamos la configuración usando el ID interno del usuario
-            query = text("""
-                SELECT * FROM configuraciones_alerta 
-                WHERE usuario_id = :id
-            """)
-            result = db_conn.execute(query, {"id": user_info.id}).fetchone()
-            
-            if not result:
-                 # Esto podría pasar si el registro falló parcialmente antes
-                print(f"❌ Configuración no encontrada para usuario_id {user_info.id}. ¿Registro incompleto?")
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Configuración de alerta no encontrada para el usuario.")
-            
-            print(f"✅ Configuración encontrada para usuario_id: {user_info.id}")
-            return dict(result._mapping) # Devolvemos como diccionario
+            trans = db_conn.begin()
+            try:
+                # Buscamos la configuración usando el ID interno del usuario
+                query = text("""
+                    SELECT * FROM configuraciones_alerta
+                    WHERE usuario_id = :id
+                """)
+                result = db_conn.execute(query, {"id": user_info.id}).fetchone()
+
+                if not result:
+                    # Crear registro por defecto si no existe (usuarios antiguos o registro incompleto)
+                    print(f"⚠️ Configuración no encontrada para usuario_id {user_info.id}. Creando configuración por defecto...")
+                    query_create = text("""
+                        INSERT INTO configuraciones_alerta (usuario_id)
+                        VALUES (:id)
+                        RETURNING *
+                    """)
+                    result = db_conn.execute(query_create, {"id": user_info.id}).fetchone()
+                    trans.commit()
+                    print(f"✅ Configuración por defecto creada para usuario_id: {user_info.id}")
+                else:
+                    trans.commit()
+                    print(f"✅ Configuración encontrada para usuario_id: {user_info.id}")
+
+                return dict(result._mapping) # Devolvemos como diccionario
+            except Exception as e:
+                trans.rollback()
+                raise e
             
     except HTTPException as http_exc:
          raise http_exc
