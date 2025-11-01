@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, ReactNode } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
-import { User, Lock, Trash2, ChevronRight } from 'lucide-react-native';
+import { User, Lock, Trash2, ChevronRight, Edit, Calendar, MapPin, FileText } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
@@ -14,11 +14,19 @@ import SlidingPanel from '../components/Slidingpanel';
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
-// Tipo para el perfil de usuario (simplificado para esta vista)
+// Tipo para el perfil de usuario completo
 type UserProfileData = {
+    id: number;
     nombre: string;
     email: string;
-    // No necesitamos el rol aquí generalmente, pero podría incluirse
+    rol: 'cuidador' | 'adulto_mayor' | 'administrador';
+
+    // Datos de adultos_mayores (solo si rol = adulto_mayor)
+    adulto_mayor_id?: number;
+    nombre_completo?: string;
+    fecha_nacimiento?: string;
+    direccion?: string;
+    notas_relevantes?: string;
 };
 
 // Interfaz reutilizada de tu código original para el componente MenuItem
@@ -75,15 +83,46 @@ export default function ProfileScreen() {
     if (!token) { router.replace('/login'); return; }
 
     try {
-      console.log('Obteniendo perfil para /profile...');
-      const response = await axios.get(`${API_URL}/usuarios/yo`, {
+      console.log('Obteniendo perfil completo...');
+
+      // Primero obtenemos datos básicos del usuario
+      const userResponse = await axios.get(`${API_URL}/usuarios/yo`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setUserProfile({
-          nombre: response.data.nombre,
-          email: response.data.email,
-      });
-      console.log('Perfil obtenido:', response.data.email);
+
+      const userData = userResponse.data;
+      let profileData: UserProfileData = {
+        id: userData.id,
+        nombre: userData.nombre,
+        email: userData.email,
+        rol: userData.rol,
+      };
+
+      // Si es adulto mayor, obtenemos datos adicionales
+      if (userData.rol === 'adulto_mayor') {
+        try {
+          // Buscar el adulto_mayor_id correspondiente
+          const amResponse = await axios.get(`${API_URL}/adultos-mayores`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          // Buscar el perfil que coincide con este usuario_id
+          const miPerfil = amResponse.data.find((am: any) => am.usuario_id === userData.id);
+
+          if (miPerfil) {
+            profileData.adulto_mayor_id = miPerfil.id;
+            profileData.nombre_completo = miPerfil.nombre_completo || '';
+            profileData.fecha_nacimiento = miPerfil.fecha_nacimiento || null;
+            profileData.direccion = miPerfil.direccion || '';
+            profileData.notas_relevantes = miPerfil.notas_relevantes || '';
+          }
+        } catch (amError) {
+          console.error('Error al obtener datos de adulto mayor:', amError);
+        }
+      }
+
+      setUserProfile(profileData);
+      console.log('Perfil cargado:', profileData);
     } catch (err) {
       console.error('Error al obtener perfil:', err);
       setError('No se pudo cargar tu perfil.');
@@ -260,12 +299,105 @@ export default function ProfileScreen() {
 
       <ScrollView style={styles.container}>
 
-      {/* Información del Usuario (No editable aquí directamente) */}
+      {/* Botón de Editar Perfil */}
+      <Pressable
+        style={styles.editProfileButton}
+        onPress={() => router.push('/editar-perfil')}
+      >
+        <Edit size={20} color="#7c3aed" />
+        <Text style={styles.editProfileText}>Editar Información Personal</Text>
+        <ChevronRight size={20} color="#7c3aed" />
+      </Pressable>
+
+      {/* Información del Usuario */}
       <View style={styles.userInfoSection}>
-          <Text style={styles.infoLabel}>Nombre:</Text>
-          <Text style={styles.infoValue}>{userProfile?.nombre || 'Cargando...'}</Text>
-          <Text style={styles.infoLabel}>Correo Electrónico:</Text>
-          <Text style={styles.infoValue}>{userProfile?.email || 'Cargando...'}</Text>
+          <Text style={styles.sectionTitle}>Información de Cuenta</Text>
+
+          <View style={styles.infoRow}>
+            <User size={18} color="#7c3aed" />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Nombre</Text>
+              <Text style={styles.infoValue}>{userProfile?.nombre || 'No especificado'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.infoRow}>
+            <User size={18} color="#7c3aed" />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Correo Electrónico</Text>
+              <Text style={styles.infoValue}>{userProfile?.email || 'No especificado'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.infoRow}>
+            <User size={18} color="#7c3aed" />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Rol</Text>
+              <Text style={styles.infoValue}>
+                {userProfile?.rol === 'cuidador' ? 'Cuidador' :
+                 userProfile?.rol === 'adulto_mayor' ? 'Adulto Mayor' : 'Administrador'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Datos adicionales para Adultos Mayores */}
+          {userProfile?.rol === 'adulto_mayor' && (
+            <>
+              {userProfile.nombre_completo && (
+                <View style={styles.infoRow}>
+                  <User size={18} color="#7c3aed" />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Nombre Completo</Text>
+                    <Text style={styles.infoValue}>{userProfile.nombre_completo}</Text>
+                  </View>
+                </View>
+              )}
+
+              {userProfile.fecha_nacimiento && (
+                <View style={styles.infoRow}>
+                  <Calendar size={18} color="#7c3aed" />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Fecha de Nacimiento</Text>
+                    <Text style={styles.infoValue}>
+                      {new Date(userProfile.fecha_nacimiento).toLocaleDateString('es-ES', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {userProfile.direccion && (
+                <View style={styles.infoRow}>
+                  <MapPin size={18} color="#7c3aed" />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Dirección</Text>
+                    <Text style={styles.infoValue}>{userProfile.direccion}</Text>
+                  </View>
+                </View>
+              )}
+
+              {userProfile.notas_relevantes && (
+                <View style={styles.infoRow}>
+                  <FileText size={18} color="#7c3aed" />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Notas Relevantes</Text>
+                    <Text style={styles.infoValue}>{userProfile.notas_relevantes}</Text>
+                  </View>
+                </View>
+              )}
+
+              {!userProfile.nombre_completo && !userProfile.fecha_nacimiento && !userProfile.direccion && (
+                <View style={styles.warningBox}>
+                  <Text style={styles.warningText}>
+                    ⚠️ Tu perfil está incompleto. Completa tu información para que tus cuidadores puedan ayudarte mejor.
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
       </View>
 
 
@@ -343,23 +475,86 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   errorText: { color: 'red', textAlign: 'center', marginBottom: 10 },
   container: { flex: 1, backgroundColor: "#f9fafb" },
+  editProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#7c3aed',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  editProfileText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#7c3aed',
+    marginLeft: 12,
+  },
   userInfoSection: {
       backgroundColor: '#fff',
-      padding: 15,
-      borderRadius: 8,
+      padding: 16,
+      borderRadius: 12,
       marginHorizontal: 16,
       marginBottom: 20,
-      shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
   },
-   infoLabel: {
-      fontSize: 14,
-      color: '#6b7280', // Gris
-      marginBottom: 2,
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 16,
   },
-   infoValue: {
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  infoContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  infoLabel: {
+      fontSize: 12,
+      color: '#6b7280',
+      marginBottom: 4,
+      textTransform: 'uppercase',
+      fontWeight: '600',
+  },
+  infoValue: {
       fontSize: 16,
-      color: '#1f2937', // Oscuro
-      marginBottom: 10,
+      color: '#111827',
+      lineHeight: 22,
+  },
+  warningBox: {
+    backgroundColor: '#fef3c7',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#f59e0b',
+    marginTop: 8,
+  },
+  warningText: {
+    color: '#92400e',
+    fontSize: 14,
+    lineHeight: 20,
   },
   menu: { flexDirection: "column", marginHorizontal: 16 }, // Añadimos margen horizontal
   menuItem: {
