@@ -5,41 +5,34 @@ import CustomHeader from '../../components/CustomHeader';
 import SlidingPanel from '../../components/Slidingpanel';
 
 export default function CuidadorLayout() {
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-
+  // El header ya se maneja dentro de cada pantalla individual
+  // Este layout solo necesita definir el Stack sin headers personalizados
   return (
-    <>
-      <Stack>
-        <Stack.Screen
-          name="alertas"
-          options={{
-            headerShown: true,
-            header: () => <CustomHeader title="Historial de Alertas" onMenuPress={() => setIsPanelOpen(true)} />,
-          }}
-        />
-        <Stack.Screen
-          name="recordatorios"
-          options={{
-            headerShown: true,
-            header: () => <CustomHeader title="Gestión de Recordatorios" onMenuPress={() => setIsPanelOpen(true)} />,
-          }}
-        />
-        <Stack.Screen
-          name="adultos-mayores"
-          options={{
-            headerShown: true,
-            header: () => <CustomHeader title="Adultos Mayores" onMenuPress={() => setIsPanelOpen(true)} />,
-          }}
-        />
-        <Stack.Screen
-          name="agregar-persona"
-          options={{
-            headerShown: true,
-            header: () => <CustomHeader title="Agregar Persona" onMenuPress={() => setIsPanelOpen(true)} />,
-          }}
-        />
-      </Stack>
-      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
-    </>
+    <Stack>
+      <Stack.Screen
+        name="alertas"
+        options={{
+          headerShown: false, // El header se maneja dentro de alertas.tsx
+        }}
+      />
+      <Stack.Screen
+        name="recordatorios"
+        options={{
+          headerShown: false, // El header se maneja dentro de recordatorios.tsx
+        }}
+      />
+      <Stack.Screen
+        name="adultos-mayores"
+        options={{
+          headerShown: false, // El header se maneja dentro de adultos-mayores.tsx
+        }}
+      />
+      <Stack.Screen
+        name="agregar-persona"
+        options={{
+          headerShown: false, // El header se maneja dentro de agregar-persona.tsx
+        }}
+      />
+    </Stack>
   );
 }

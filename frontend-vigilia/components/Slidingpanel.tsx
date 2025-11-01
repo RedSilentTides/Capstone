@@ -18,36 +18,60 @@ export default function SlidingPanel({ isOpen, onClose }: SlidingPanelProps) {
   if (!isOpen) return null;
 
   const handleLogout = async () => {
-    Alert.alert(
-      "Cerrar Sesión",
-      "¿Estás seguro que deseas cerrar sesión?",
-      [
-        {
-          text: "Cancelar",
-          style: "cancel"
-        },
-        {
-          text: "Cerrar Sesión",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const tokenKey = 'userToken';
-              if (Platform.OS === 'web') {
-                await AsyncStorage.removeItem(tokenKey);
-              } else {
-                await SecureStore.deleteItemAsync(tokenKey);
-              }
-              setAuthState(false);
-              onClose();
-              router.replace('/login');
-            } catch (error) {
-              console.error('Error al cerrar sesión:', error);
-              Alert.alert('Error', 'No se pudo cerrar sesión correctamente');
-            }
+    // En web, Alert.alert no funciona correctamente, por lo que usamos confirm
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('¿Estás seguro que deseas cerrar sesión?');
+      if (!confirmed) return;
+    } else {
+      // En mobile, mostramos el Alert.alert nativo
+      Alert.alert(
+        "Cerrar Sesión",
+        "¿Estás seguro que deseas cerrar sesión?",
+        [
+          {
+            text: "Cancelar",
+            style: "cancel"
+          },
+          {
+            text: "Cerrar Sesión",
+            style: "destructive",
+            onPress: () => performLogout()
           }
-        }
-      ]
-    );
+        ]
+      );
+      return; // Salimos aquí porque el Alert.alert manejará el flujo
+    }
+
+    // Si llegamos aquí, es web y confirmó
+    performLogout();
+  };
+
+  // Función separada que realiza el logout
+  const performLogout = async () => {
+    try {
+      console.log('Cerrando sesión desde panel deslizante...');
+      const tokenKey = 'userToken';
+
+      if (Platform.OS === 'web') {
+        await AsyncStorage.removeItem(tokenKey);
+      } else {
+        await SecureStore.deleteItemAsync(tokenKey);
+      }
+
+      console.log('Token eliminado exitosamente');
+      setAuthState(false);
+      onClose(); // Cerrar el panel
+      router.replace('/login');
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+
+      // En web, usamos alert simple
+      if (Platform.OS === 'web') {
+        window.alert('Error al cerrar sesión. Por favor intenta nuevamente.');
+      } else {
+        Alert.alert('Error', 'No se pudo cerrar sesión correctamente');
+      }
+    }
   };
 
   const MenuItem = ({

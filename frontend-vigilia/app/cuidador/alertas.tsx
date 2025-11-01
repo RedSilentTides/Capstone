@@ -129,55 +129,9 @@ export default function AlertasScreen() {
     }));
   };
 
-  // Generar alertas de ejemplo (para poblar datos)
-  const generarAlertasEjemplo = (): Alerta[] => {
-    const ahora = new Date();
-
-    return [
-      {
-        id: 'recordatorio-1',
-        type: 'recordatorio',
-        title: 'Recordatorio de Medicamento',
-        message: 'Es hora de tomar la pastilla para la presión',
-        timestamp: new Date(ahora.getTime() - 3600000),
-        read: false,
-        adulto_mayor_nombre: 'Alexander',
-      },
-      {
-        id: 'consejo-1',
-        type: 'consejo',
-        title: 'Consejo de Salud',
-        message: 'Recuerda que la hidratación es importante. Asegúrate de que tus adultos mayores beban suficiente agua.',
-        timestamp: new Date(ahora.getTime() - 7200000),
-        read: false,
-      },
-      {
-        id: 'sistema-1',
-        type: 'sistema',
-        title: 'Sistema Actualizado',
-        message: 'El sistema VigilIA se ha actualizado con nuevas funcionalidades de detección.',
-        timestamp: new Date(ahora.getTime() - 10800000),
-        read: true,
-      },
-      {
-        id: 'recordatorio-2',
-        type: 'recordatorio',
-        title: 'Cita Médica Próxima',
-        message: 'Recuerda la cita con el cardiólogo mañana a las 10:00 AM',
-        timestamp: new Date(ahora.getTime() - 14400000),
-        read: false,
-        adulto_mayor_nombre: 'TEST4',
-      },
-      {
-        id: 'consejo-2',
-        type: 'consejo',
-        title: 'Ejercicio Regular',
-        message: 'El ejercicio ligero diario ayuda a mantener la movilidad y prevenir caídas.',
-        timestamp: new Date(ahora.getTime() - 86400000),
-        read: true,
-      },
-    ];
-  };
+  // NOTA: Función eliminada - Ya no se generan alertas de prueba
+  // En el futuro, las alertas de recordatorios, consejos y sistema
+  // vendrán de endpoints reales del backend
 
   // Función para cargar alertas
   const fetchAlertas = useCallback(async (isRefreshing = false) => {
@@ -203,11 +157,13 @@ export default function AlertasScreen() {
       // Convertir eventos a alertas de caída
       const alertasCaidas = convertirEventosACaidas(response.data);
 
-      // Agregar alertas de ejemplo (en producción, estas vendrían de otras tablas)
-      const alertasEjemplo = generarAlertasEjemplo();
+      // TODO: En el futuro, agregar alertas de otros tipos:
+      // - Recordatorios próximos desde GET /recordatorios
+      // - Consejos de salud desde un endpoint dedicado
+      // - Notificaciones del sistema
 
-      // Combinar y ordenar por fecha
-      const todasAlertas = [...alertasCaidas, ...alertasEjemplo].sort(
+      // Ordenar por fecha (más recientes primero)
+      const todasAlertas = alertasCaidas.sort(
         (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
       );
 
@@ -220,10 +176,7 @@ export default function AlertasScreen() {
         setAuthState(false);
         setTimeout(() => router.replace('/login'), 2000);
       } else {
-        // Si hay error con la API, mostrar solo alertas de ejemplo
-        const alertasEjemplo = generarAlertasEjemplo();
-        setAlertas(alertasEjemplo);
-        console.log('Mostrando alertas de ejemplo debido a error en API');
+        setError('No se pudieron cargar las alertas. Intenta nuevamente.');
       }
     } finally {
       setIsLoading(false);
