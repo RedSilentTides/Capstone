@@ -61,7 +61,7 @@ engine = create_engine(
 
 # Inicializa FastAPI
 app = FastAPI(title="VigilIA API")
-
+print("✅✅✅ API V2 (CON CORRECCIÓN DIAS_SEMANA) INICIADA ✅✅✅")
 # --- Configuración de CORS ---
 origins = [
     "http://localhost",
@@ -148,12 +148,14 @@ class RecordatorioCreate(BaseModel):
     # Validador para asegurar que dias_semana contenga valores válidos (0-6)
     @validator('dias_semana')
     def dias_semana_validos(cls, v):
+        # --- INICIO DE LA CORRECCIÓN ---
         if v is None:
-            return v
+            return [] # Convertir None (de JSON null) a lista vacía
+        # --- FIN DE LA CORRECCIÓN ---
         if not isinstance(v, list):
             raise ValueError('dias_semana debe ser una lista de enteros')
         if len(v) == 0:
-            return None  # Lista vacía se convierte en None
+            return []
         # Validar que todos los valores estén entre 0 y 6
         for dia in v:
             if not isinstance(dia, int) or dia < 0 or dia > 6:
@@ -202,12 +204,14 @@ class RecordatorioUpdate(BaseModel):
 
     @validator('dias_semana')
     def dias_semana_validos_update(cls, v):
+        # --- INICIO DE LA CORRECCIÓN ---
         if v is None:
-            return v
+            return [] # Convertir None (de JSON null) a lista vacía
+        # --- FIN DE LA CORRECCIÓN ---
         if not isinstance(v, list):
             raise ValueError('dias_semana debe ser una lista de enteros')
         if len(v) == 0:
-            return None  # Lista vacía se convierte en None
+            return []
         # Validar que todos los valores estén entre 0 y 6
         for dia in v:
             if not isinstance(dia, int) or dia < 0 or dia > 6:
@@ -671,48 +675,64 @@ def create_recordatorio(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
 
     print(f"Intentando crear recordatorio para adulto_mayor_id: {recordatorio_data.adulto_mayor_id} por usuario_id: {user_info.id} (rol: {user_info.rol})")
+    
+    # --- INICIO DE LA CORRECCIÓN ---
+    # Mover la lógica de la BD DENTRO de un solo bloque try/except
+    # y comenzar la transacción ANTES de cualquier consulta.
     try:
         with engine.connect() as db_conn:
-            # Verificar permiso según el rol
-            if user_info.rol == 'cuidador':
-                # Verificar que el cuidador cuida a este adulto mayor
-                check_caregiver_relationship(db_conn, user_info.id, recordatorio_data.adulto_mayor_id)
-            elif user_info.rol == 'adulto_mayor':
-                # Verificar que el adulto mayor está creando un recordatorio para sí mismo
-                query_check = text("SELECT id FROM adultos_mayores WHERE id = :adulto_mayor_id AND usuario_id = :usuario_id")
-                result_check = db_conn.execute(query_check, {
-                    "adulto_mayor_id": recordatorio_data.adulto_mayor_id,
-                    "usuario_id": user_info.id
-                }).fetchone()
-                if not result_check:
-                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No puedes crear recordatorios para otros usuarios.")
-            
+            # 1. Iniciar la transacción PRIMERO
             trans = db_conn.begin()
             try:
+                # 2. Verificar permiso según el rol (AHORA DENTRO DE LA TRANSACCIÓN)
+                if user_info.rol == 'cuidador':
+                    # Verificar que el cuidador cuida a este adulto mayor
+                    check_caregiver_relationship(db_conn, user_info.id, recordatorio_data.adulto_mayor_id)
+                elif user_info.rol == 'adulto_mayor':
+                    # Verificar que el adulto mayor está creando un recordatorio para sí mismo
+                    query_check = text("SELECT id FROM adultos_mayores WHERE id = :adulto_mayor_id AND usuario_id = :usuario_id")
+                    result_check = db_conn.execute(query_check, {
+                        "adulto_mayor_id": recordatorio_data.adulto_mayor_id,
+                        "usuario_id": user_info.id
+                    }).fetchone()
+                    if not result_check:
+                        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No puedes crear recordatorios para otros usuarios.")
+                
+                # 3. Insertar el recordatorio
                 query = text("""
                     INSERT INTO recordatorios (adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, tipo_recordatorio, dias_semana)
                     VALUES (:adulto_mayor_id, :titulo, :descripcion, :fecha_hora_programada, :frecuencia, :tipo_recordatorio, :dias_semana)
                     RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, dias_semana, fecha_creacion
                 """)
+                
+                # Usamos model_dump() que ya tiene los datos validados (con dias_semana = [])
                 result = db_conn.execute(query, recordatorio_data.model_dump()).fetchone()
-                trans.commit()
                 
                 if not result:
                      raise Exception("INSERT no devolvió el recordatorio creado.")
+                
+                # 4. Si todo salió bien, hacer commit
+                trans.commit()
                 
                 print(f"✅ Recordatorio creado con ID: {result._mapping['id']}")
                 return RecordatorioInfo(**result._mapping)
                 
             except Exception as e_db:
+                # 5. Si algo falla (permisos, insert, etc.), hacer rollback
                 print(f"--- ERROR AL CREAR RECORDATORIO (DB) ---")
                 print(f"ERROR: {str(e_db)}")
                 trans.rollback()
-                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e_db)}")
+                
+                # Re-lanzar el error para que FastAPI lo maneje
+                if isinstance(e_db, HTTPException):
+                    raise e_db
+                else:
+                    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e_db)}")
                 
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
-        print(f"--- ERROR INESPERADO AL CREAR RECORDATORIO ---")
+        print(f"--- ERROR INESPERADO AL CREAR RECORDATORIO (Nivel Superior) ---")
         print(f"ERROR: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
 
@@ -814,6 +834,7 @@ def update_recordatorio(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
 
     # Prepara campos a actualizar (solo los enviados)
+    # Usamos model_dump() que ya tiene los datos validados (con dias_semana = [])
     update_fields = recordatorio_data.model_dump(exclude_unset=True)
     if not update_fields:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
@@ -1509,8 +1530,11 @@ def actualizar_adulto_mayor(
     """
     user_info = read_users_me(current_user)
 
-    if user_info.rol not in ['cuidador', 'administrador']:
+    # --- INICIO CORRECCIÓN PERMISO ---
+    # Permitir a cuidadores/admins O al propio adulto mayor
+    if user_info.rol not in ['cuidador', 'administrador', 'adulto_mayor']:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido.")
+    # --- FIN CORRECCIÓN PERMISO ---
 
     # Prepara campos a actualizar
     update_fields = adulto_data.model_dump(exclude_unset=True)
@@ -1518,22 +1542,33 @@ def actualizar_adulto_mayor(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
 
     set_clause = ", ".join([f"{key} = :{key}" for key in update_fields.keys()])
-    params = {**update_fields, "adulto_mayor_id": adulto_mayor_id, "cuidador_id": user_info.id}
+    params = {**update_fields, "adulto_mayor_id": adulto_mayor_id, "usuario_id": user_info.id}
 
-    query = text(f"""
-        UPDATE adultos_mayores
-        SET {set_clause}
-        WHERE id = :adulto_mayor_id
-        AND id IN (
-            SELECT cam.adulto_mayor_id
-            FROM cuidadores_adultos_mayores cam
-            WHERE cam.usuario_id = :cuidador_id
-        )
-        RETURNING *
-    """)
-
-    print(f"Actualizando adulto mayor {adulto_mayor_id} por cuidador {user_info.id}")
-
+    # --- INICIO LÓGICA DE ACTUALIZACIÓN CORREGIDA ---
+    if user_info.rol in ['cuidador', 'administrador']:
+        print(f"Actualizando adulto mayor {adulto_mayor_id} por cuidador {user_info.id}")
+        query = text(f"""
+            UPDATE adultos_mayores
+            SET {set_clause}
+            WHERE id = :adulto_mayor_id
+            AND id IN (
+                SELECT cam.adulto_mayor_id
+                FROM cuidadores_adultos_mayores cam
+                WHERE cam.usuario_id = :usuario_id
+            )
+            RETURNING *
+        """)
+    else: # Es 'adulto_mayor'
+        print(f"Actualizando perfil propio de adulto mayor {adulto_mayor_id} por usuario {user_info.id}")
+        query = text(f"""
+            UPDATE adultos_mayores
+            SET {set_clause}
+            WHERE id = :adulto_mayor_id
+            AND usuario_id = :usuario_id
+            RETURNING *
+        """)
+    # --- FIN LÓGICA DE ACTUALIZACIÓN CORREGIDA ---
+    
     try:
         with engine.connect() as db_conn:
             trans = db_conn.begin()
@@ -1545,9 +1580,9 @@ def actualizar_adulto_mayor(
                 check_exists = text("SELECT id FROM adultos_mayores WHERE id = :id")
                 exists = db_conn.execute(check_exists, {"id": adulto_mayor_id}).fetchone()
                 if exists:
-                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permiso para modificar este adulto mayor.")
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permiso para modificar este perfil.")
                 else:
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Adulto mayor no encontrado.")
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Perfil de adulto mayor no encontrado.")
 
             print(f"✅ Adulto mayor {adulto_mayor_id} actualizado")
             return AdultoMayorInfo(**result._mapping)
