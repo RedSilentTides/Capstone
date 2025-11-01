@@ -101,13 +101,13 @@ export default function ProfileScreen() {
       // Si es adulto mayor, obtenemos datos adicionales
       if (userData.rol === 'adulto_mayor') {
         try {
-          // Buscar el adulto_mayor_id correspondiente
-          const amResponse = await axios.get(`${API_URL}/adultos-mayores`, {
+          // Obtener el perfil propio del adulto mayor
+          const amResponse = await axios.get(`${API_URL}/adultos-mayores/mi-perfil`, {
             headers: { Authorization: `Bearer ${token}` },
           });
 
-          // Buscar el perfil que coincide con este usuario_id
-          const miPerfil = amResponse.data.find((am: any) => am.usuario_id === userData.id);
+          // El endpoint devuelve directamente el perfil del adulto mayor
+          const miPerfil = amResponse.data;
 
           if (miPerfil) {
             profileData.adulto_mayor_id = miPerfil.id;

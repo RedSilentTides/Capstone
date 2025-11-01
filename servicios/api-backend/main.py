@@ -126,6 +126,7 @@ class RecordatorioCreate(BaseModel):
     descripcion: str | None = None
     fecha_hora_programada: datetime # FastAPI convertirá string ISO a datetime
     frecuencia: str = 'una_vez' # Permitimos los valores del CHECK constraint
+    tipo_recordatorio: str = 'medicamento' # Nuevo campo con valor por defecto
 
     # Validador para asegurar que la frecuencia sea correcta
     @validator('frecuencia')
@@ -135,6 +136,14 @@ class RecordatorioCreate(BaseModel):
             raise ValueError(f'Frecuencia debe ser una de: {", ".join(allowed)}')
         return v
 
+    # Validador para asegurar que el tipo sea correcto
+    @validator('tipo_recordatorio')
+    def tipo_valido(cls, v):
+        allowed = ['medicamento', 'cita_medica', 'ejercicio', 'hidratacion', 'comida', 'consejo_salud', 'otro']
+        if v not in allowed:
+            raise ValueError(f'Tipo de recordatorio debe ser uno de: {", ".join(allowed)}')
+        return v
+
 # Modelo para recibir datos al actualizar (todos los campos opcionales)
 class RecordatorioUpdate(BaseModel):
     titulo: constr(min_length=1, max_length=150) | None = None
@@ -142,6 +151,7 @@ class RecordatorioUpdate(BaseModel):
     fecha_hora_programada: datetime | None = None
     frecuencia: str | None = None
     estado: str | None = None # Permitimos actualizar estado también
+    tipo_recordatorio: str | None = None # Nuevo campo opcional para actualización
 
     @validator('frecuencia')
     def frecuencia_valida_update(cls, v):
@@ -152,7 +162,7 @@ class RecordatorioUpdate(BaseModel):
         if v not in allowed:
             raise ValueError(f'Frecuencia debe ser una de: {", ".join(allowed)}')
         return v
-        
+
     @validator('estado')
     def estado_valido_update(cls, v):
          # Permite None o valores válidos
@@ -161,6 +171,15 @@ class RecordatorioUpdate(BaseModel):
         allowed = ['pendiente', 'enviado', 'confirmado', 'omitido']
         if v not in allowed:
             raise ValueError(f'Estado debe ser uno de: {", ".join(allowed)}')
+        return v
+
+    @validator('tipo_recordatorio')
+    def tipo_valido_update(cls, v):
+        if v is None:
+            return v
+        allowed = ['medicamento', 'cita_medica', 'ejercicio', 'hidratacion', 'comida', 'consejo_salud', 'otro']
+        if v not in allowed:
+            raise ValueError(f'Tipo de recordatorio debe ser uno de: {", ".join(allowed)}')
         return v
 
 
@@ -173,6 +192,7 @@ class RecordatorioInfo(BaseModel):
     fecha_hora_programada: datetime # FastAPI lo convertirá a string ISO
     frecuencia: str
     estado: str
+    tipo_recordatorio: str | None = 'medicamento' # Nuevo campo: medicamento, cita_medica, ejercicio, hidratacion, comida, consejo_salud, otro
     fecha_creacion: datetime
 
 # --- Seguridad y Autenticación ---
@@ -625,9 +645,9 @@ def create_recordatorio(
             trans = db_conn.begin()
             try:
                 query = text("""
-                    INSERT INTO recordatorios (adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia)
-                    VALUES (:adulto_mayor_id, :titulo, :descripcion, :fecha_hora_programada, :frecuencia)
-                    RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, fecha_creacion
+                    INSERT INTO recordatorios (adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, tipo_recordatorio)
+                    VALUES (:adulto_mayor_id, :titulo, :descripcion, :fecha_hora_programada, :frecuencia, :tipo_recordatorio)
+                    RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, fecha_creacion
                 """)
                 result = db_conn.execute(query, recordatorio_data.model_dump()).fetchone()
                 trans.commit()
@@ -669,7 +689,7 @@ def get_recordatorios(
 
             # Construcción base de la consulta
             select_clause = """
-                SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.fecha_creacion
+                SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.tipo_recordatorio, r.fecha_creacion
                 FROM recordatorios r """
             where_clauses = []
             params = {"limit": limit, "offset": skip}
@@ -766,7 +786,7 @@ def update_recordatorio(
              FROM cuidadores_adultos_mayores cam 
              WHERE cam.usuario_id = :cuidador_id
            )
-        RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, fecha_creacion
+        RETURNING id, adulto_mayor_id, titulo, descripcion, fecha_hora_programada, frecuencia, estado, tipo_recordatorio, fecha_creacion
     """)
 
     print(f"Intentando actualizar recordatorio id: {recordatorio_id} por cuidador_id: {user_info.id}")
@@ -1315,6 +1335,40 @@ def obtener_adultos_mayores(
 
     except Exception as e:
         print(f"--- ERROR AL OBTENER ADULTOS MAYORES ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
+
+
+# GET /adultos-mayores/mi-perfil (Obtener perfil propio de adulto mayor)
+@app.get("/adultos-mayores/mi-perfil", response_model=AdultoMayorInfo)
+def obtener_mi_perfil_adulto_mayor(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Permite a un adulto mayor obtener su propio perfil usando su usuario_id.
+    """
+    user_info = read_users_me(current_user)
+
+    if user_info.rol != 'adulto_mayor':
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Este endpoint es solo para adultos mayores.")
+
+    print(f"Obteniendo perfil de adulto mayor para usuario_id: {user_info.id}")
+
+    try:
+        with engine.connect() as db_conn:
+            query = text("SELECT * FROM adultos_mayores WHERE usuario_id = :usuario_id")
+            result = db_conn.execute(query, {"usuario_id": user_info.id}).fetchone()
+
+            if not result:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Perfil de adulto mayor no encontrado.")
+
+            print(f"✅ Perfil encontrado: {result._mapping['nombre_completo']}")
+            return AdultoMayorInfo(**result._mapping)
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"--- ERROR AL OBTENER PERFIL DE ADULTO MAYOR ---")
         print(f"ERROR: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
 

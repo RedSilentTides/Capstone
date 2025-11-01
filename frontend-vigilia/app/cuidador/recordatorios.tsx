@@ -23,6 +23,7 @@ interface Recordatorio {
     fecha_hora_programada: string;
     frecuencia: 'una_vez' | 'diario' | 'semanal' | 'mensual';
     estado: string;
+    tipo_recordatorio?: string;
     fecha_creacion: string;
 }
 
@@ -32,6 +33,7 @@ interface ReminderFormData {
     descripcion: string;
     fecha_hora_programada: Date;
     frecuencia: 'una_vez' | 'diario' | 'semanal' | 'mensual';
+    tipo_recordatorio: string;
 }
 
 interface UserProfile {
@@ -47,6 +49,16 @@ const frecuenciaOptions = [
     { label: 'Diario', value: 'diario' },
     { label: 'Semanal', value: 'semanal' },
     { label: 'Mensual', value: 'mensual' },
+];
+
+const tipoRecordatorioOptions = [
+    { label: '💊 Medicamento', value: 'medicamento', color: '#ef4444', icon: '💊' },
+    { label: '🏥 Cita Médica', value: 'cita_medica', color: '#3b82f6', icon: '🏥' },
+    { label: '🏃 Ejercicio', value: 'ejercicio', color: '#10b981', icon: '🏃' },
+    { label: '💧 Hidratación', value: 'hidratacion', color: '#06b6d4', icon: '💧' },
+    { label: '🍽️ Comida', value: 'comida', color: '#f59e0b', icon: '🍽️' },
+    { label: '💜 Consejo de Salud', value: 'consejo_salud', color: '#7c3aed', icon: '💜' },
+    { label: '📌 Otro', value: 'otro', color: '#6b7280', icon: '📌' },
 ];
 
 export default function RecordatoriosScreen() {
@@ -102,17 +114,14 @@ export default function RecordatoriosScreen() {
 
             // Si es adulto mayor y no se pasó un adulto_mayor_id, obtenerlo
             if (response.data.rol === 'adulto_mayor' && !adultoMayorIdParam) {
-                // Obtener el adulto_mayor_id desde la base de datos
-                const adultoResponse = await axios.get(`${API_URL}/adultos-mayores`, {
+                // Obtener el perfil propio del adulto mayor
+                const adultoResponse = await axios.get(`${API_URL}/adultos-mayores/mi-perfil`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
 
-                if (adultoResponse.data.length > 0) {
-                    const adultoMayorData = adultoResponse.data.find((am: any) => am.usuario_id === response.data.id);
-                    if (adultoMayorData) {
-                        setAdultoMayorId(adultoMayorData.id);
-                        setNombreAdultoMayor(adultoMayorData.nombre_completo || response.data.nombre);
-                    }
+                if (adultoResponse.data) {
+                    setAdultoMayorId(adultoResponse.data.id);
+                    setNombreAdultoMayor(adultoResponse.data.nombre_completo || response.data.nombre);
                 } else {
                     setNombreAdultoMayor(response.data.nombre);
                 }
@@ -314,6 +323,7 @@ export default function RecordatoriosScreen() {
             descripcion: '',
             fecha_hora_programada: tomorrow,
             frecuencia: 'una_vez',
+            tipo_recordatorio: 'medicamento', // Valor por defecto
         });
         setIsEditing(false);
         setModalVisible(true);
@@ -326,6 +336,7 @@ export default function RecordatoriosScreen() {
             descripcion: reminder.descripcion || '',
             fecha_hora_programada: new Date(reminder.fecha_hora_programada),
             frecuencia: reminder.frecuencia,
+            tipo_recordatorio: reminder.tipo_recordatorio || 'medicamento', // Incluir tipo
         });
         setIsEditing(true);
         setModalVisible(true);
@@ -367,41 +378,55 @@ export default function RecordatoriosScreen() {
         });
     };
 
-    const renderRecordatorioCard = (recordatorio: Recordatorio) => (
-        <View key={recordatorio.id} style={styles.reminderCard}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={styles.reminderTitle}>{recordatorio.titulo}</Text>
-                {recordatorio.descripcion && (
-                    <Text style={styles.reminderDesc}>{recordatorio.descripcion}</Text>
+    const renderRecordatorioCard = (recordatorio: Recordatorio) => {
+        const tipoInfo = tipoRecordatorioOptions.find(t => t.value === (recordatorio.tipo_recordatorio || 'medicamento'));
+
+        return (
+            <View key={recordatorio.id} style={styles.reminderCard}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                    <View style={styles.reminderHeader}>
+                        <Text style={styles.reminderTitle}>{recordatorio.titulo}</Text>
+                        {tipoInfo && (
+                            <View style={[styles.tipoBadge, { backgroundColor: tipoInfo.color + '20', borderColor: tipoInfo.color }]}>
+                                <Text style={styles.tipoBadgeIcon}>{tipoInfo.icon}</Text>
+                                <Text style={[styles.tipoBadgeText, { color: tipoInfo.color }]}>
+                                    {tipoInfo.label.split(' ')[1]}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                    {recordatorio.descripcion && (
+                        <Text style={styles.reminderDesc}>{recordatorio.descripcion}</Text>
+                    )}
+                    <View style={styles.reminderRow}>
+                        <Calendar size={14} color="#6b7280" />
+                        <Text style={styles.reminderDetailText}>{formatFecha(recordatorio.fecha_hora_programada)}</Text>
+                    </View>
+                    <View style={styles.reminderRow}>
+                        <Clock size={14} color="#6b7280" />
+                        <Text style={styles.reminderDetailText}>{formatHora(recordatorio.fecha_hora_programada)}</Text>
+                    </View>
+                    <View style={styles.reminderRow}>
+                        <Repeat size={14} color="#6b7280" />
+                        <Text style={styles.reminderDetailText}>
+                            {frecuenciaOptions.find(f => f.value === recordatorio.frecuencia)?.label || recordatorio.frecuencia}
+                        </Text>
+                    </View>
+                </View>
+                {/* Mostrar botones de editar/eliminar */}
+                {(userProfile?.rol === 'cuidador' || userProfile?.rol === 'adulto_mayor') && (
+                    <View style={styles.reminderActions}>
+                        <Pressable onPress={() => openEditModal(recordatorio)} style={styles.actionButton}>
+                            <Edit2 size={20} color="#3b82f6" />
+                        </Pressable>
+                        <Pressable onPress={() => handleDeleteReminder(recordatorio.id)} style={styles.actionButton}>
+                            <Trash2 size={20} color="#ef4444" />
+                        </Pressable>
+                    </View>
                 )}
-                <View style={styles.reminderRow}>
-                    <Calendar size={14} color="#6b7280" />
-                    <Text style={styles.reminderDetailText}>{formatFecha(recordatorio.fecha_hora_programada)}</Text>
-                </View>
-                <View style={styles.reminderRow}>
-                    <Clock size={14} color="#6b7280" />
-                    <Text style={styles.reminderDetailText}>{formatHora(recordatorio.fecha_hora_programada)}</Text>
-                </View>
-                <View style={styles.reminderRow}>
-                    <Repeat size={14} color="#6b7280" />
-                    <Text style={styles.reminderDetailText}>
-                        {frecuenciaOptions.find(f => f.value === recordatorio.frecuencia)?.label || recordatorio.frecuencia}
-                    </Text>
-                </View>
             </View>
-            {/* Solo mostrar botones de editar/eliminar si es cuidador */}
-            {userProfile?.rol === 'cuidador' && (
-                <View style={styles.reminderActions}>
-                    <Pressable onPress={() => openEditModal(recordatorio)} style={styles.actionButton}>
-                        <Edit2 size={20} color="#3b82f6" />
-                    </Pressable>
-                    <Pressable onPress={() => handleDeleteReminder(recordatorio.id)} style={styles.actionButton}>
-                        <Trash2 size={20} color="#ef4444" />
-                    </Pressable>
-                </View>
-            )}
-        </View>
-    );
+        );
+    };
 
     // Determinar el título del header
     const headerTitle = nombreAdultoMayor ? `Recordatorios - ${nombreAdultoMayor}` : 'Mis Recordatorios';
@@ -418,8 +443,8 @@ export default function RecordatoriosScreen() {
                 <Text style={styles.headerSubtitle}>
                     {nombreAdultoMayor || (userProfile?.nombre || 'Cargando...')}
                 </Text>
-                {/* Solo mostrar botón de agregar si es cuidador */}
-                {userProfile?.rol === 'cuidador' && adultoMayorId && (
+                {/* Mostrar botón de agregar si es cuidador con adulto_mayor_id o si es adulto_mayor */}
+                {((userProfile?.rol === 'cuidador' && adultoMayorId) || userProfile?.rol === 'adulto_mayor') && adultoMayorId && (
                     <Pressable onPress={openAddModal} style={styles.addButton}>
                         <PlusCircle size={24} color="white" />
                         <Text style={styles.addButtonText}>Nuevo Recordatorio</Text>
@@ -453,7 +478,7 @@ export default function RecordatoriosScreen() {
                             <Text style={styles.emptySubtext}>
                                 {userProfile?.rol === 'cuidador'
                                     ? 'Crea un recordatorio para mantener un seguimiento de medicamentos, citas o tareas importantes.'
-                                    : 'No tienes recordatorios programados en este momento.'}
+                                    : 'Presiona "Nuevo Recordatorio" para crear tu primer recordatorio de medicamentos, citas o actividades.'}
                             </Text>
                         </View>
                     ) : (
@@ -464,8 +489,8 @@ export default function RecordatoriosScreen() {
                 </ScrollView>
             )}
 
-            {/* Modal para Añadir/Editar Recordatorio - Solo para cuidadores */}
-            {userProfile?.rol === 'cuidador' && (
+            {/* Modal para Añadir/Editar Recordatorio */}
+            {(userProfile?.rol === 'cuidador' || userProfile?.rol === 'adulto_mayor') && (
                 <Modal
                     animationType="slide"
                     transparent={true}
@@ -549,6 +574,29 @@ export default function RecordatoriosScreen() {
                                         onChange={handleTimeChange}
                                     />
                                 )}
+
+                                <Text style={styles.modalLabel}>Tipo de Recordatorio *</Text>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tipoContainer}>
+                                    {tipoRecordatorioOptions.map((option) => (
+                                        <Pressable
+                                            key={option.value}
+                                            style={[
+                                                styles.tipoOption,
+                                                currentReminder.tipo_recordatorio === option.value && styles.tipoOptionActive,
+                                                currentReminder.tipo_recordatorio === option.value && { borderColor: option.color }
+                                            ]}
+                                            onPress={() => setCurrentReminder(prev => ({ ...prev, tipo_recordatorio: option.value }))}
+                                        >
+                                            <Text style={styles.tipoIcon}>{option.icon}</Text>
+                                            <Text style={[
+                                                styles.tipoOptionText,
+                                                currentReminder.tipo_recordatorio === option.value && styles.tipoOptionTextActive
+                                            ]}>
+                                                {option.label.split(' ')[1]} {/* Muestra solo el nombre sin el emoji */}
+                                            </Text>
+                                        </Pressable>
+                                    ))}
+                                </ScrollView>
 
                                 <Text style={styles.modalLabel}>Frecuencia *</Text>
                                 <View style={styles.frecuenciaContainer}>
@@ -700,11 +748,35 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'flex-start',
     },
+    reminderHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 6,
+        flexWrap: 'wrap',
+        gap: 8,
+    },
     reminderTitle: {
         fontSize: 17,
         fontWeight: '600',
         color: '#111827',
-        marginBottom: 6,
+        flex: 1,
+    },
+    tipoBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        gap: 4,
+    },
+    tipoBadgeIcon: {
+        fontSize: 14,
+    },
+    tipoBadgeText: {
+        fontSize: 11,
+        fontWeight: '600',
     },
     reminderDesc: {
         fontSize: 14,
@@ -835,6 +907,39 @@ const styles = StyleSheet.create({
     },
     frecuenciaOptionTextActive: {
         color: 'white',
+        fontWeight: '600',
+    },
+    tipoContainer: {
+        marginBottom: 20,
+        maxHeight: 100,
+    },
+    tipoOption: {
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: '#e5e7eb',
+        backgroundColor: '#f9fafb',
+        marginRight: 12,
+        alignItems: 'center',
+        minWidth: 120,
+    },
+    tipoOptionActive: {
+        backgroundColor: '#ede9fe',
+        borderWidth: 2,
+    },
+    tipoIcon: {
+        fontSize: 28,
+        marginBottom: 4,
+    },
+    tipoOptionText: {
+        fontSize: 13,
+        color: '#6b7280',
+        fontWeight: '500',
+        textAlign: 'center',
+    },
+    tipoOptionTextActive: {
+        color: '#7c3aed',
         fontWeight: '600',
     },
     modalButtons: {
