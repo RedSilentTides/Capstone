@@ -412,16 +412,12 @@ export default function AlertasScreen() {
     return count + noLeidos;
   }, 0);
 
-  // Total de alertas no leídas (caídas + recordatorios)
-  const alertasCaidasNoLeidas = alertas.filter(a => !a.read).length;
-  const alertasNoLeidas = alertasCaidasNoLeidas + recordatoriosNoLeidos;
+  // Total de caídas y caídas no leídas (confirmado_por_usuario === null)
+  const totalCaidas = alertas.filter(a => a.type === 'caida').length;
+  const alertasCaidasNoLeidas = alertas.filter(a => a.type === 'caida' && !a.read).length;
 
-  const alertasPorTipo = {
-    caida: alertas.filter(a => a.type === 'caida').length,
-    recordatorio: totalRecordatorios,
-    consejo: alertas.filter(a => a.type === 'consejo').length,
-    sistema: alertas.filter(a => a.type === 'sistema').length,
-  };
+  // Total de alertas no leídas (caídas + recordatorios)
+  const alertasNoLeidas = alertasCaidasNoLeidas + recordatoriosNoLeidos;
 
   return (
     <View style={styles.container}>
@@ -452,16 +448,12 @@ export default function AlertasScreen() {
               <Text style={styles.statLabel}>No leídas</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={[styles.statNumber, { color: '#ef4444' }]}>{alertasPorTipo.caida}</Text>
+              <Text style={[styles.statNumber, { color: '#ef4444' }]}>{totalCaidas}</Text>
               <Text style={styles.statLabel}>Caídas</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={[styles.statNumber, { color: '#3b82f6' }]}>{alertasPorTipo.recordatorio}</Text>
+              <Text style={[styles.statNumber, { color: '#3b82f6' }]}>{totalRecordatorios}</Text>
               <Text style={styles.statLabel}>Recordatorios</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={[styles.statNumber, { color: '#7c3aed' }]}>{alertasPorTipo.consejo}</Text>
-              <Text style={styles.statLabel}>Consejos</Text>
             </View>
           </View>
 
@@ -556,23 +548,31 @@ const styles = StyleSheet.create({
   statsSection: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    padding: 16,
+    padding: 20,
     backgroundColor: 'white',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
   },
   statCard: {
     alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: '800',
     color: '#7c3aed',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#6b7280',
-    marginTop: 4,
+    marginTop: 6,
+    fontWeight: '600',
   },
   mainContent: {
     padding: 20

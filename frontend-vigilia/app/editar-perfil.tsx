@@ -165,12 +165,26 @@ export default function EditarPerfilScreen() {
         }
         router.back();
       } else {
-        // Para cuidadores, mostrar mensaje informativo
+        // Para cuidadores y administradores, actualizar nombre de usuario
+        const updateData = {
+          nombre: nombreCompleto.trim(),
+        };
+
+        console.log('Actualizando nombre de usuario:', updateData);
+        await axios.put(
+          `${API_URL}/usuarios/yo`,
+          updateData,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
         if (Platform.OS === 'web') {
-          window.alert('Los datos básicos de usuario no se pueden modificar desde aquí. Puedes cambiar tu contraseña desde la vista de perfil.');
+          window.alert('Perfil actualizado exitosamente');
         } else {
-          Alert.alert('Información', 'Los datos básicos de usuario no se pueden modificar desde aquí. Puedes cambiar tu contraseña desde la vista de perfil.');
+          Alert.alert('Éxito', 'Perfil actualizado exitosamente');
         }
+        router.back();
       }
     } catch (err) {
       console.error('Error al guardar perfil:', err);
@@ -329,8 +343,8 @@ export default function EditarPerfilScreen() {
           {userProfile?.rol === 'cuidador' && (
             <View style={styles.infoBox}>
               <Text style={styles.infoText}>
-                Como cuidador, tu nombre se muestra en la app. Para cambiar otros datos,
-                contacta a soporte o modifica tu contraseña desde la vista de perfil.
+                Como cuidador, puedes actualizar tu nombre aquí. Para cambiar tu contraseña,
+                ve a la vista de perfil desde el menú lateral.
               </Text>
             </View>
           )}

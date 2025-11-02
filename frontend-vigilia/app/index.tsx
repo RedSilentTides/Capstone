@@ -224,28 +224,6 @@ export default function IndexScreen() {
   // --- FIN DE ZONA DE HOOKS ---
 
 
-  // --- Función de Cerrar Sesión ---
-  const handleLogout = async () => {
-      console.log("Cerrando sesión...");
-       try {
-           const tokenKey = 'userToken';
-           if (Platform.OS === 'web') await AsyncStorage.removeItem(tokenKey);
-           else await SecureStore.deleteItemAsync(tokenKey);
-           console.log('Token local eliminado.');
-
-           // Actualiza estado global y navega al login
-           setAuthState(false);
-           router.replace('/login');
-           console.log('Navegando al login...');
-       } catch (e) {
-           console.error("Error al cerrar sesión:", e);
-           // Aún así forzamos el estado a false y navegamos
-           setAuthState(false);
-           router.replace('/login');
-       }
-  };
-
-
   // --- Renderizado ---
   // (La lógica de retorno condicional viene DESPUÉS de todos los hooks)
 
@@ -325,7 +303,8 @@ export default function IndexScreen() {
               </Pressable>
             )}
 
-            <Text style={styles.sectionTitle}>Gestión de Personas</Text>
+            <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
+            <Text style={styles.subsectionTitle}>Gestión de Personas</Text>
             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/adultos-mayores')}>
               <Users size={20} color="white" style={{ marginRight: 8 }} />
               <Text style={styles.buttonText}>Ver Personas a Cuidar</Text>
@@ -335,16 +314,18 @@ export default function IndexScreen() {
               <Text style={styles.buttonText}>Agregar Persona</Text>
             </Pressable>
 
-            <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
-            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/configuracion')}>
-              <Text style={styles.buttonText}>Configurar Notificaciones</Text>
-            </Pressable>
+            <Text style={styles.subsectionTitle}>Otros</Text>
             <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/recordatorios')}>
               <Text style={styles.buttonText}>Gestionar Recordatorios</Text>
             </Pressable>
 
-
             <Text style={styles.sectionTitle}>Próximos Recordatorios (Todos)</Text>
+
+            <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/alertas')}>
+               <Bell size={16} color="#374151" style={{ marginRight: 8 }} />
+               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver Historial Completo</Text>
+            </Pressable>
+
             {recordatorios.length > 0 ? (
                 <>
                   {recordatorios.slice(0, 3).map((rec) => ( // Mostrar los 3 más próximos
@@ -366,10 +347,6 @@ export default function IndexScreen() {
             ) : (
                 <Text style={styles.noAlerts}>No hay recordatorios próximos.</Text>
             )}
-            <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/alertas')}>
-               <Bell size={16} color="#374151" style={{ marginRight: 8 }} />
-               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver Historial Completo</Text>
-            </Pressable>
           </>
         )}
 
@@ -399,7 +376,15 @@ export default function IndexScreen() {
               </Pressable>
             )}
 
+            <Pressable style={[styles.actionButton, styles.panicButton]} onPress={() => alert('¡Ayuda solicitada!')}>
+              <Text style={styles.buttonText}>BOTÓN DE AYUDA</Text>
+            </Pressable>
+
             <Text style={styles.sectionTitle}>Mis Próximos Recordatorios</Text>
+
+            <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/recordatorios')}>
+               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver todos mis recordatorios</Text>
+            </Pressable>
 
             {recordatorios.length > 0 ? (
                 recordatorios.slice(0, 5).map(rec => ( // Mostrar solo los 5 más próximos
@@ -412,13 +397,6 @@ export default function IndexScreen() {
             ) : (
                 <Text style={styles.placeholderText}>No tienes recordatorios programados.</Text>
             )}
-
-            <Pressable style={[styles.actionButton, styles.panicButton]} onPress={() => alert('¡Ayuda solicitada!')}>
-              <Text style={styles.buttonText}>BOTÓN DE AYUDA</Text>
-            </Pressable>
-             <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/recordatorios')}>
-               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver todos mis recordatorios</Text>
-            </Pressable>
           </>
         )}
         
@@ -431,10 +409,6 @@ export default function IndexScreen() {
           )}
           {/* --- FIN Panel de Admin --- */}
 
-        {/* Botón de Cerrar Sesión */}
-        <Pressable style={styles.logoutButton} onPress={handleLogout}>
-           <Text style={styles.buttonText}>Cerrar Sesión</Text>
-        </Pressable>
         </ScrollView>
 
         {/* Panel lateral */}
@@ -459,6 +433,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, paddingTop: 10, backgroundColor: '#f0f4f8' },
   welcome: { fontSize: 24, fontWeight: 'bold', marginBottom: 5, marginTop: 10, textAlign: 'center', color: '#1e3a8a' },
   sectionTitle: { fontSize: 20, fontWeight: '600', marginTop: 25, marginBottom: 15, color: '#111827', borderBottomWidth: 1, borderBottomColor: '#d1d5db', paddingBottom: 5 },
+  subsectionTitle: { fontSize: 16, fontWeight: '500', marginTop: 10, marginBottom: 10, color: '#374151', paddingLeft: 5 },
   errorText: { color: 'red', fontSize: 16, textAlign: 'center', marginBottom: 20 },
   redirectText: { color: '#6b7280', fontSize: 14, textAlign: 'center', marginBottom: 20 },
   actionButton: { paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginBottom: 10, flexDirection: 'row', justifyContent: 'center' },

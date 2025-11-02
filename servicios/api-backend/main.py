@@ -92,6 +92,9 @@ class CurrentUserInfo(BaseModel):
     nombre: str
     rol: str
 
+class UserUpdate(BaseModel):
+    nombre: constr(min_length=1, max_length=100) | None = None
+
 class AlertConfigUpdate(BaseModel):
     notificar_app: bool | None = None
     token_fcm_app: str | None = None
@@ -456,7 +459,7 @@ def delete_user_account(current_user: dict = Depends(get_current_user)):
 
                 if result.rowcount == 0:
                     print(f"❌ No se encontró el usuario local {user_info.id} para eliminar.")
-                    pass 
+                    pass
 
                 trans.commit()
                 print(f"✅ Datos locales eliminados para usuario_id: {user_info.id}")
@@ -466,11 +469,71 @@ def delete_user_account(current_user: dict = Depends(get_current_user)):
                 print(f"ERROR: {str(e_db)}")
                 trans.rollback()
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD al eliminar usuario: {str(e_db)}")
-        return None 
+        return None
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
         print(f"--- ERROR INESPERADO AL ELIMINAR USUARIO ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+@app.put("/usuarios/yo", response_model=CurrentUserInfo)
+def update_user_profile(update_data: UserUpdate, current_user: dict = Depends(get_current_user)):
+    """
+    Actualiza el perfil del usuario autenticado (nombre).
+    """
+    user_uid = current_user.get("uid")
+    if not user_uid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido, UID no encontrado.")
+
+    # Obtener información actual del usuario
+    user_info = read_users_me(current_user)
+
+    # Validar que al menos un campo esté presente
+    if update_data.nombre is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Debe proporcionar al menos un campo para actualizar.")
+
+    print(f"Actualizando perfil para usuario_id: {user_info.id} (firebase_uid: {user_uid})")
+
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            try:
+                # Actualizar nombre en la base de datos
+                query = text("""
+                    UPDATE usuarios
+                    SET nombre = :nombre
+                    WHERE id = :id AND firebase_uid = :uid
+                """)
+                result = db_conn.execute(query, {
+                    "nombre": update_data.nombre.strip(),
+                    "id": user_info.id,
+                    "uid": user_uid
+                })
+
+                if result.rowcount == 0:
+                    trans.rollback()
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
+
+                trans.commit()
+                print(f"✅ Perfil actualizado para usuario_id: {user_info.id}")
+
+                # Retornar el perfil actualizado
+                return read_users_me(current_user)
+
+            except HTTPException as http_exc:
+                trans.rollback()
+                raise http_exc
+            except Exception as e_db:
+                print(f"--- ERROR AL ACTUALIZAR USUARIO (DB) ---")
+                print(f"ERROR: {str(e_db)}")
+                trans.rollback()
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD al actualizar usuario: {str(e_db)}")
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"--- ERROR INESPERADO AL ACTUALIZAR USUARIO ---")
         print(f"ERROR: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
 
