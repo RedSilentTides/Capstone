@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ActivityIndicator, Button,
-    Pressable, ScrollView, Platform
+    Pressable, ScrollView, Platform, Modal
 } from 'react-native';
-// Se elimina useFocusEffect porque no se usa
-import { useRouter } from 'expo-router'; 
-import * as SecureStore from 'expo-secure-store';
+import { useRouter } from 'expo-router';
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from './_layout';
-import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users } from 'lucide-react-native';
-import SlidingPanel from '../components/Slidingpanel';
-import CustomHeader from '../components/CustomHeader';
+import { useAuth } from '../../contexts/AuthContext';
+import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, Heart } from 'lucide-react-native';
+import CustomHeader from '../../components/CustomHeader';
 
 // URL del backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -42,6 +38,7 @@ interface Recordatorio {
     frecuencia: 'una_vez' | 'diario' | 'semanal' | 'mensual';
     estado: string;
     tipo_recordatorio?: string;
+    dias_semana?: number[] | null;
     fecha_creacion: string;
     nombre_adulto_mayor?: string | null;
 }
@@ -93,15 +90,26 @@ function AlertPreviewCard({ alert }: { alert: AlertItem }) {
 // --- Pantalla Principal ---
 export default function IndexScreen() {
   // --- INICIO DE ZONA DE HOOKS (TODOS JUNTOS) ---
-  const { isAuthenticated, setAuthState, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
   const router = useRouter();
 
+  // Efecto para redirigir si no está autenticado
+  useEffect(() => {
+    // Solo redirigir si la carga ha terminado y no está autenticado.
+    if (!isAuthLoading && !isAuthenticated) {
+      console.log('IndexScreen: No autenticado, redirigiendo a /login');
+      router.replace('/login');
+    }
+  }, [isAuthLoading, isAuthenticated, router]);
+
   const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([]);
+  const [selectedRecordatorio, setSelectedRecordatorio] = useState<Recordatorio | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isEnviandoAlerta, setIsEnviandoAlerta] = useState(false);
 
   // Funciones para formatear fecha y hora
   const formatFecha = (fecha: string) => {
@@ -113,119 +121,96 @@ export default function IndexScreen() {
       return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   };
   
-  // Función para obtener el token (reutilizable)
-  const getToken = useCallback(async (): Promise<string | null> => {
-    const tokenKey = 'userToken';
-     if (Platform.OS === 'web') return await AsyncStorage.getItem(tokenKey);
-     else return await SecureStore.getItemAsync(tokenKey);
-  }, []);
-
-  // Función para obtener solicitudes pendientes
-  const fetchSolicitudesPendientes = useCallback(async (token?: string) => {
-    try {
-      const authToken = token || await getToken();
-      if (!authToken) return;
-
-      const response = await axios.get(`${API_URL}/solicitudes-cuidado/recibidas`, {
-        headers: { Authorization: `Bearer ${authToken}` }
-      });
-      const pendientes = response.data.filter((s: any) => s.estado === 'pendiente').length;
-      setSolicitudesPendientes(pendientes);
-    } catch (error) {
-      console.error('Error al obtener solicitudes pendientes:', error);
-      // No mostramos error al usuario, solo no actualizamos el contador
-    }
-  }, [getToken]);
-
-  // Efecto para buscar el perfil del usuario CUANDO esté autenticado
+  // Efecto para buscar el perfil del usuario y otros datos cuando está autenticado
   useEffect(() => {
-    const fetchProfile = async () => {
-      // Solo procede si está autenticado y la carga inicial del auth terminó
-      if (!isAuthenticated || isAuthLoading) {
-        setProfileLoading(false); // Detiene la carga del perfil si no está auth
+    const fetchAllData = async () => {
+      if (!isAuthenticated || !user) {
+        setProfileLoading(false);
         return;
       }
 
       setProfileLoading(true);
       setProfileError(null);
-      const token = await getToken();
 
-      // Verificación extra de token (aunque isAuthenticated debería ser suficiente)
-      if (!token) {
-        console.error('IndexScreen: Auth=true pero no hay token? Forzando logout.');
-        setAuthState(false); // Actualiza estado global
-        setProfileLoading(false);
-        // _layout se encargará de redirigir
-        return;
-      }
-
-      // Llamar al backend para obtener el perfil
       try {
-        console.log('IndexScreen: Token OK, obteniendo perfil...');
-        const response = await axios.get(`${API_URL}/usuarios/yo`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setUserProfile(response.data as UserProfile);
-        console.log('IndexScreen: Perfil obtenido:', response.data.rol);
+        const token = await user.getIdToken();
+        if (!token) {
+          throw new Error('No se pudo obtener el token de Firebase.');
+        }
 
-        // Obtener solicitudes pendientes para cualquier usuario
-        fetchSolicitudesPendientes(token);
-        // --- OBTENER RECORDATORIOS ---
-        console.log('IndexScreen: Obteniendo recordatorios...');
-        const recordatoriosResponse = await axios.get(`${API_URL}/recordatorios`, {
-            headers: { Authorization: `Bearer ${token}` }
-            // No pasamos params, para que traiga todo lo que el rol puede ver
-        });
+        const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
-        // Ordenar por fecha, más próximos primero
+        console.log('IndexScreen: Token OK, obteniendo todos los datos...');
+        
+        // Realizar todas las llamadas en paralelo
+        const [profileResponse, solicitudesResponse, recordatoriosResponse] = await Promise.all([
+          axios.get(`${API_URL}/usuarios/yo`, authHeader),
+          axios.get(`${API_URL}/solicitudes-cuidado/recibidas`, authHeader),
+          axios.get(`${API_URL}/recordatorios`, authHeader)
+        ]);
+
+        // Procesar perfil
+        setUserProfile(profileResponse.data as UserProfile);
+        console.log('IndexScreen: Perfil obtenido:', profileResponse.data.rol);
+
+        // Procesar solicitudes
+        const pendientes = solicitudesResponse.data.filter((s: any) => s.estado === 'pendiente').length;
+        setSolicitudesPendientes(pendientes);
+
+        // Procesar recordatorios
         const sortedRecordatorios = (recordatoriosResponse.data as Recordatorio[]).sort(
             (a, b) => new Date(a.fecha_hora_programada).getTime() - new Date(b.fecha_hora_programada).getTime()
         );
-
         setRecordatorios(sortedRecordatorios);
         console.log(`IndexScreen: Recordatorios obtenidos: ${sortedRecordatorios.length}`);
-        // --- FIN DE OBTENER RECORDATORIOS ---
+
       } catch (fetchError) {
-        console.error('IndexScreen: Error al obtener perfil:', fetchError);
-        if (axios.isAxiosError(fetchError) && (fetchError.response?.status === 401 || fetchError.response?.status === 403)) {
-          setProfileError('Tu sesión ha expirado.');
-          // Borrar token inválido y forzar logout/redirección
-          try {
-              const tokenKey = 'userToken';
-              if (Platform.OS === 'web') await AsyncStorage.removeItem(tokenKey);
-              else await SecureStore.deleteItemAsync(tokenKey);
-              setAuthState(false); // Actualiza estado global -> _layout redirige
-          } catch (removeError) { console.error("Error al borrar token inválido:", removeError); }
-        } else {
-          setProfileError('No se pudo cargar tu información.');
-        }
+        console.error('IndexScreen: Error al obtener datos:', fetchError);
+        setProfileError('No se pudo cargar tu información. Intenta iniciar sesión de nuevo.');
         setUserProfile(null);
+        // El layout se encargará de la redirección si isAuthenticated cambia
       } finally {
         setProfileLoading(false);
       }
     };
 
-    fetchProfile();
-  // Se ejecuta cuando cambia el estado de autenticación o la carga inicial
-  }, [isAuthenticated, isAuthLoading, getToken, setAuthState, fetchSolicitudesPendientes]); 
+    fetchAllData();
+  }, [user, isAuthenticated]);
 
-  // Efecto para auto-redirigir en caso de error
-  // (Este es el hook que debía estar aquí arriba)
-  useEffect(() => {
-    if (profileError) {
-      const timer = setTimeout(() => {
-        console.log('Auto-redirigiendo al login después de error...');
-        setAuthState(false);
-        router.replace('/login');
-      }, 2000);
-      return () => clearTimeout(timer);
+  // Función para enviar alerta de ayuda
+  const enviarAlertaAyuda = useCallback(async () => {
+    if (isEnviandoAlerta || !user) return;
+
+    setIsEnviandoAlerta(true);
+
+    try {
+      const token = await user.getIdToken();
+      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+
+      const perfilResponse = await axios.get(`${API_URL}/usuarios/yo`, authHeader);
+      const adultoMayorId = perfilResponse.data.adulto_mayor_id;
+
+      if (!adultoMayorId) {
+        throw new Error('No se encontró tu perfil de adulto mayor.');
+      }
+
+      await axios.post(`${API_URL}/alertas`, { adulto_mayor_id: adultoMayorId, tipo_alerta: 'ayuda' }, authHeader);
+
+      alert('¡Alerta de ayuda enviada! Tus cuidadores han sido notificados.');
+
+    } catch (error) {
+      console.error('Error al enviar alerta de ayuda:', error);
+      const errorMessage = axios.isAxiosError(error)
+        ? error.response?.data?.detail || 'Error al enviar alerta de ayuda'
+        : 'Error inesperado al enviar alerta';
+      alert(`Error: ${errorMessage}`);
+    } finally {
+      setIsEnviandoAlerta(false);
     }
-  }, [profileError, setAuthState, router]);
-  // --- FIN DE ZONA DE HOOKS ---
+  }, [user, isEnviandoAlerta]);
 
 
   // --- Renderizado ---
-  // (La lógica de retorno condicional viene DESPUÉS de todos los hooks)
 
   // Muestra carga global si el AuthProvider aún está verificando
   if (isAuthLoading) {
@@ -247,30 +232,23 @@ export default function IndexScreen() {
   }
 
   // Muestra error si falló la carga del perfil
-  // (Este es el bloque if que se queda. El duplicado fue eliminado)
   if (profileError) {
      return (
       <View style={styles.centerContainer}>
         <Text style={styles.errorText}>{profileError}</Text>
-        <Text style={styles.redirectText}>Redirigiendo al inicio de sesión...</Text>
-        <Button title="Ir Ahora" onPress={() => {
-          setAuthState(false);
-          router.replace('/login');
-        }} />
+        <Button title="Ir a Inicio de Sesión" onPress={() => router.replace('/login')} />
       </View>
     );
   }
 
-  // --- SE ELIMINAN LOS BLOQUES DUPLICADOS DE useEffect Y if (profileError) DE AQUÍ ---
-
   // Si está autenticado y tenemos el perfil, mostramos el dashboard correcto
-  if (userProfile) {
+  if (isAuthenticated && userProfile) {
     return (
       <View style={{ flex: 1 }}>
         {/* Header con menú lateral */}
         <CustomHeader
           title="VigilIA"
-          onMenuPress={() => setIsPanelOpen(true)}
+          onMenuPress={() => router.push('/panel')}
           showBackButton={false}
         />
 
@@ -315,7 +293,7 @@ export default function IndexScreen() {
             </Pressable>
 
             <Text style={styles.subsectionTitle}>Otros</Text>
-            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/recordatorios')}>
+            <Pressable style={[styles.actionButton, styles.blueButton]} onPress={() => router.push('/cuidador/seleccionar-adulto-recordatorios')}>
               <Text style={styles.buttonText}>Gestionar Recordatorios</Text>
             </Pressable>
 
@@ -376,8 +354,16 @@ export default function IndexScreen() {
               </Pressable>
             )}
 
-            <Pressable style={[styles.actionButton, styles.panicButton]} onPress={() => alert('¡Ayuda solicitada!')}>
-              <Text style={styles.buttonText}>BOTÓN DE AYUDA</Text>
+            <Pressable
+              style={[styles.actionButton, styles.panicButton, isEnviandoAlerta && styles.disabledButton]}
+              onPress={enviarAlertaAyuda}
+              disabled={isEnviandoAlerta}
+            >
+              {isEnviandoAlerta ? (
+                <ActivityIndicator color="white" size="small" />
+              ) : (
+                <Text style={styles.buttonText}>BOTÓN DE AYUDA</Text>
+              )}
             </Pressable>
 
             <Text style={styles.sectionTitle}>Mis Próximos Recordatorios</Text>
@@ -388,11 +374,18 @@ export default function IndexScreen() {
 
             {recordatorios.length > 0 ? (
                 recordatorios.slice(0, 5).map(rec => ( // Mostrar solo los 5 más próximos
-                    <View key={rec.id} style={styles.simpleCard}>
+                    <Pressable
+                        key={rec.id}
+                        style={styles.simpleCard}
+                        onPress={() => {
+                            setSelectedRecordatorio(rec);
+                            setIsModalVisible(true);
+                        }}
+                    >
                         <Text style={styles.simpleCardTitle}>{rec.titulo}</Text>
                         {rec.descripcion ? <Text style={styles.simpleCardText}>{rec.descripcion}</Text> : null}
                         <Text style={styles.simpleCardDate}>{formatFecha(rec.fecha_hora_programada)} - {formatHora(rec.fecha_hora_programada)}</Text>
-                    </View>
+                    </Pressable>
                 ))
             ) : (
                 <Text style={styles.placeholderText}>No tienes recordatorios programados.</Text>
@@ -411,19 +404,141 @@ export default function IndexScreen() {
 
         </ScrollView>
 
-        {/* Panel lateral */}
-        <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+        {/* Modal de detalle del recordatorio */}
+        <Modal
+          visible={isModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsModalVisible(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setIsModalVisible(false)}
+          >
+            <Pressable
+              style={styles.modalContent}
+              onPress={(e) => e.stopPropagation()}
+            >
+              {selectedRecordatorio && (
+                <>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Detalle del Recordatorio</Text>
+                    <Pressable onPress={() => setIsModalVisible(false)} style={styles.modalCloseButton}>
+                      <X size={24} color="#6b7280" />
+                    </Pressable>
+                  </View>
+
+                  <ScrollView style={styles.modalBody}>
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalLabel}>Título</Text>
+                      <Text style={styles.modalValue}>{selectedRecordatorio.titulo}</Text>
+                    </View>
+
+                    {selectedRecordatorio.descripcion && (
+                      <View style={styles.modalSection}>
+                        <Text style={styles.modalLabel}>Descripción</Text>
+                        <Text style={styles.modalValue}>{selectedRecordatorio.descripcion}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalLabel}>Fecha y Hora</Text>
+                      <Text style={styles.modalValue}>
+                        {new Date(selectedRecordatorio.fecha_hora_programada).toLocaleString('es-ES', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </Text>
+                    </View>
+
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalLabel}>Tipo</Text>
+                      <Text style={styles.modalValue}>
+                        {selectedRecordatorio.tipo_recordatorio === 'medicamento' && '💊 Medicamento'}
+                        {selectedRecordatorio.tipo_recordatorio === 'cita_medica' && '🏥 Cita Médica'}
+                        {selectedRecordatorio.tipo_recordatorio === 'ejercicio' && '🏃 Ejercicio'}
+                        {selectedRecordatorio.tipo_recordatorio === 'hidratacion' && '💧 Hidratación'}
+                        {selectedRecordatorio.tipo_recordatorio === 'comida' && '🍽️ Comida'}
+                        {selectedRecordatorio.tipo_recordatorio === 'consejo_salud' && '💜 Consejo de Salud'}
+                        {selectedRecordatorio.tipo_recordatorio === 'otro' && '📌 Otro'}
+                        {!selectedRecordatorio.tipo_recordatorio && '📌 Sin especificar'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalLabel}>Frecuencia</Text>
+                      <Text style={styles.modalValue}>
+                        {selectedRecordatorio.frecuencia === 'una_vez' && 'Una vez'}
+                        {selectedRecordatorio.frecuencia === 'diario' && 'Diario'}
+                        {selectedRecordatorio.frecuencia === 'semanal' && 'Semanal'}
+                        {selectedRecordatorio.frecuencia === 'mensual' && 'Mensual'}
+                      </Text>
+                    </View>
+
+                    {selectedRecordatorio.dias_semana && selectedRecordatorio.dias_semana.length > 0 && (
+                      <View style={styles.modalSection}>
+                        <Text style={styles.modalLabel}>Días de la semana</Text>
+                        <Text style={styles.modalValue}>
+                          {selectedRecordatorio.dias_semana.map(dia => {
+                            const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+                            return dias[dia];
+                          }).join(', ')}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalLabel}>Estado</Text>
+                      <View style={[
+                        styles.modalStatusBadge,
+                        selectedRecordatorio.estado === 'pendiente' && { backgroundColor: '#fef3c7' },
+                        selectedRecordatorio.estado === 'enviado' && { backgroundColor: '#dbeafe' },
+                        selectedRecordatorio.estado === 'confirmado' && { backgroundColor: '#d1fae5' },
+                        selectedRecordatorio.estado === 'omitido' && { backgroundColor: '#fee2e2' }
+                      ]}>
+                        <Text style={[
+                          styles.modalStatusText,
+                          selectedRecordatorio.estado === 'pendiente' && { color: '#92400e' },
+                          selectedRecordatorio.estado === 'enviado' && { color: '#1e40af' },
+                          selectedRecordatorio.estado === 'confirmado' && { color: '#065f46' },
+                          selectedRecordatorio.estado === 'omitido' && { color: '#991b1b' }
+                        ]}>
+                          {selectedRecordatorio.estado === 'pendiente' && 'Pendiente'}
+                          {selectedRecordatorio.estado === 'enviado' && 'Enviado'}
+                          {selectedRecordatorio.estado === 'confirmado' && 'Confirmado'}
+                          {selectedRecordatorio.estado === 'omitido' && 'Omitido'}
+                        </Text>
+                      </View>
+                    </View>
+                  </ScrollView>
+
+                  <View style={styles.modalFooter}>
+                    <Pressable
+                      style={styles.modalCloseButtonLarge}
+                      onPress={() => setIsModalVisible(false)}
+                    >
+                      <Text style={styles.modalCloseButtonText}>Cerrar</Text>
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     );
   }
 
-  // Fallback si algo salió muy mal (no debería llegar aquí)
-  console.warn("IndexScreen: Estado renderizado inesperado.");
+  // Si no está autenticado (y no está cargando), el useEffect de arriba se encargará de la redirección.
+  // Mientras tanto, mostramos un loader para evitar una pantalla en blanco.
   return (
-       <View style={styles.centerContainer}>
-           <Text style={styles.errorText}>Ocurrió un error inesperado.</Text>
-           <Button title="Ir a Inicio de Sesión" onPress={() => setAuthState(false)} />
-       </View>
+    <View style={styles.centerContainer}>
+      <ActivityIndicator size="large" color="#1e3a8a" />
+    </View>
   );
 }
 
@@ -441,6 +556,7 @@ const styles = StyleSheet.create({
   greenButton: { backgroundColor: '#10b981' },
   greyButton: { backgroundColor: '#e5e7eb' },
   panicButton: { backgroundColor: '#dc2626', paddingVertical: 20, marginTop: 20 },
+  disabledButton: { backgroundColor: '#9ca3af', opacity: 0.6 },
   buttonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   logoutButton: { backgroundColor: '#ef4444', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 40, marginBottom: 20 },
   placeholderText:{ textAlign: 'center', color: '#9ca3af', marginVertical: 20 },
@@ -533,5 +649,90 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: '#7c3aed', // Morado para destacar la fecha
+  },
+  // Estilos del Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalBody: {
+    maxHeight: 500,
+  },
+  modalSection: {
+    padding: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  modalValue: {
+    fontSize: 16,
+    color: '#111827',
+    lineHeight: 24,
+  },
+  modalStatusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  modalStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  modalCloseButtonLarge: {
+    backgroundColor: '#7c3aed',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

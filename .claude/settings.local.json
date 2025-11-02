@@ -3,7 +3,8 @@
     "allow": [
       "Bash(dir:*)",
       "Bash(findstr:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(\"frontend-vigilia/app/(app)/cuidador/seleccionar-adulto-recordatorios.tsx\")"
     ],
     "deny": [],
     "ask": []

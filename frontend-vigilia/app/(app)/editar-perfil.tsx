@@ -5,9 +5,8 @@ import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from './_layout';
-import CustomHeader from '../components/CustomHeader';
-import SlidingPanel from '../components/Slidingpanel';
+import { useAuth } from '../../contexts/AuthContext';
+import CustomHeader from '../../components/CustomHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -30,12 +29,11 @@ type UserProfileData = {
 
 export default function EditarPerfilScreen() {
   const router = useRouter();
-  const { setAuthState } = useAuth();
+  const { user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Estados del formulario
   const [nombreCompleto, setNombreCompleto] = useState('');
@@ -44,162 +42,92 @@ export default function EditarPerfilScreen() {
   const [direccion, setDireccion] = useState('');
   const [notasRelevantes, setNotasRelevantes] = useState('');
 
-  const getToken = useCallback(async (): Promise<string | null> => {
-    const tokenKey = 'userToken';
-    if (Platform.OS === 'web') return await AsyncStorage.getItem(tokenKey);
-    else return await SecureStore.getItemAsync(tokenKey);
-  }, []);
-
   // Función para cargar el perfil del usuario
   const fetchProfile = useCallback(async () => {
+    if (!user) return;
     setIsLoading(true);
     setError(null);
-    const token = await getToken();
-    if (!token) { router.replace('/login'); return; }
 
     try {
-      console.log('Obteniendo perfil completo...');
+        const token = await user.getIdToken();
+        const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      // Primero obtenemos datos básicos del usuario
-      const userResponse = await axios.get(`${API_URL}/usuarios/yo`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+        const userResponse = await axios.get(`${API_URL}/usuarios/yo`, config);
+        const userData = userResponse.data;
+        let profileData: UserProfileData = { ...userData };
 
-      const userData = userResponse.data;
-      let profileData: UserProfileData = {
-        id: userData.id,
-        nombre: userData.nombre,
-        email: userData.email,
-        rol: userData.rol,
-      };
-
-      // Si es adulto mayor, obtenemos datos adicionales
-      if (userData.rol === 'adulto_mayor') {
-        try {
-          // Obtener el perfil propio del adulto mayor
-          const amResponse = await axios.get(`${API_URL}/adultos-mayores/mi-perfil`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-
-          // El endpoint devuelve directamente el perfil del adulto mayor
-          const miPerfil = amResponse.data;
-
-          if (miPerfil) {
-            profileData.adulto_mayor_id = miPerfil.id;
-            profileData.nombre_completo = miPerfil.nombre_completo || '';
-            profileData.fecha_nacimiento = miPerfil.fecha_nacimiento || null;
-            profileData.direccion = miPerfil.direccion || '';
-            profileData.notas_relevantes = miPerfil.notas_relevantes || '';
-
-            // Inicializar estados del formulario
-            setNombreCompleto(miPerfil.nombre_completo || userData.nombre);
-            if (miPerfil.fecha_nacimiento) {
-              setFechaNacimiento(new Date(miPerfil.fecha_nacimiento));
+        if (userData.rol === 'adulto_mayor') {
+            try {
+                const amResponse = await axios.get(`${API_URL}/adultos-mayores/mi-perfil`, config);
+                const miPerfil = amResponse.data;
+                if (miPerfil) {
+                    profileData = { ...profileData, ...miPerfil };
+                    setNombreCompleto(miPerfil.nombre_completo || userData.nombre);
+                    if (miPerfil.fecha_nacimiento) {
+                        setFechaNacimiento(new Date(miPerfil.fecha_nacimiento));
+                    }
+                    setDireccion(miPerfil.direccion || '');
+                    setNotasRelevantes(miPerfil.notas_relevantes || '');
+                } else {
+                    setNombreCompleto(userData.nombre);
+                }
+            } catch (amError) {
+                console.error('Error al obtener datos de adulto mayor:', amError);
+                setNombreCompleto(userData.nombre);
             }
-            setDireccion(miPerfil.direccion || '');
-            setNotasRelevantes(miPerfil.notas_relevantes || '');
-          } else {
-            // No existe perfil de adulto mayor aún, usar valores por defecto
+        } else {
             setNombreCompleto(userData.nombre);
-          }
-        } catch (amError) {
-          console.error('Error al obtener datos de adulto mayor:', amError);
-          setNombreCompleto(userData.nombre);
         }
-      } else {
-        // Para cuidadores, solo usamos el nombre de usuarios
-        setNombreCompleto(userData.nombre);
-      }
-
-      setUserProfile(profileData);
-      console.log('Perfil cargado:', profileData);
+        setUserProfile(profileData);
     } catch (err) {
-      console.error('Error al obtener perfil:', err);
-      setError('No se pudo cargar tu perfil.');
-      if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
-          setTimeout(() => router.replace('/login'), 1500);
-      }
+        console.error('Error al obtener perfil:', err);
+        setError('No se pudo cargar tu perfil.');
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  }, [getToken, router]);
+  }, [user]);
 
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
 
   const handleSave = async () => {
+    if (!user) {
+        Alert.alert('Error', 'No se encontró tu sesión.');
+        return;
+    }
     setIsSaving(true);
     setError(null);
 
-    const token = await getToken();
-    if (!token) {
-      Alert.alert('Error', 'No se encontró tu sesión.');
-      router.replace('/login');
-      return;
-    }
-
     try {
-      if (userProfile?.rol === 'adulto_mayor' && userProfile.adulto_mayor_id) {
-        // Actualizar perfil de adulto mayor
-        const updateData = {
-          nombre_completo: nombreCompleto.trim(),
-          fecha_nacimiento: fechaNacimiento ? fechaNacimiento.toISOString() : null,
-          direccion: direccion.trim() || null,
-          notas_relevantes: notasRelevantes.trim() || null,
-        };
+        const token = await user.getIdToken();
+        const config = { headers: { Authorization: `Bearer ${token}` } };
 
-        console.log('Actualizando perfil de adulto mayor:', updateData);
-        await axios.put(
-          `${API_URL}/adultos-mayores/${userProfile.adulto_mayor_id}`,
-          updateData,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        if (Platform.OS === 'web') {
-          window.alert('Perfil actualizado exitosamente');
+        if (userProfile?.rol === 'adulto_mayor' && userProfile.adulto_mayor_id) {
+            const updateData = {
+                nombre_completo: nombreCompleto.trim(),
+                fecha_nacimiento: fechaNacimiento ? fechaNacimiento.toISOString() : null,
+                direccion: direccion.trim() || null,
+                notas_relevantes: notasRelevantes.trim() || null,
+            };
+            await axios.put(`${API_URL}/adultos-mayores/${userProfile.adulto_mayor_id}`, updateData, config);
         } else {
-          Alert.alert('Éxito', 'Perfil actualizado exitosamente');
+            const updateData = { nombre: nombreCompleto.trim() };
+            await axios.put(`${API_URL}/usuarios/yo`, updateData, config);
         }
-        router.back();
-      } else {
-        // Para cuidadores y administradores, actualizar nombre de usuario
-        const updateData = {
-          nombre: nombreCompleto.trim(),
-        };
 
-        console.log('Actualizando nombre de usuario:', updateData);
-        await axios.put(
-          `${API_URL}/usuarios/yo`,
-          updateData,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        Alert.alert('Éxito', 'Perfil actualizado exitosamente');
+        router.replace('/');
 
-        if (Platform.OS === 'web') {
-          window.alert('Perfil actualizado exitosamente');
-        } else {
-          Alert.alert('Éxito', 'Perfil actualizado exitosamente');
-        }
-        router.back();
-      }
     } catch (err) {
-      console.error('Error al guardar perfil:', err);
-      const errorMessage = axios.isAxiosError(err)
-        ? err.response?.data?.detail || 'Error al guardar el perfil'
-        : 'Error inesperado al guardar';
-
-      setError(errorMessage);
-      if (Platform.OS === 'web') {
-        window.alert(errorMessage);
-      } else {
+        console.error('Error al guardar perfil:', err);
+        const errorMessage = axios.isAxiosError(err)
+            ? err.response?.data?.detail || 'Error al guardar el perfil'
+            : 'Error inesperado al guardar';
+        setError(errorMessage);
         Alert.alert('Error', errorMessage);
-      }
     } finally {
-      setIsSaving(false);
+        setIsSaving(false);
     }
   };
 
@@ -234,7 +162,7 @@ export default function EditarPerfilScreen() {
     <View style={{ flex: 1 }}>
       <CustomHeader
         title="Editar Perfil"
-        onMenuPress={() => setIsPanelOpen(true)}
+        onMenuPress={() => router.push('/panel')}
         showBackButton={true}
       />
 
@@ -366,14 +294,12 @@ export default function EditarPerfilScreen() {
 
         <Pressable
           style={styles.cancelButton}
-          onPress={() => router.back()}
+          onPress={() => router.replace('/')}
           disabled={isSaving}
         >
           <Text style={styles.cancelButtonText}>Cancelar</Text>
         </Pressable>
       </ScrollView>
-
-      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
     </View>
   );
 }

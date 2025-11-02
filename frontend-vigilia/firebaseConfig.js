@@ -1,12 +1,14 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
-import { getAuth } from "firebase/auth";
+import { getAuth, initializeAuth, getReactNativePersistence, indexedDBLocalPersistence } from 'firebase/auth';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
 // Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -15,15 +17,21 @@ const firebaseConfig = {
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID 
-};;
+};
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+
+// Initialize Firebase Auth with platform-specific persistence
+const auth = Platform.OS === 'web'
+  ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
+  : initializeAuth(app, { persistence: getReactNativePersistence(ReactNativeAsyncStorage) });
+
+export { auth };
 
 isSupported().then((supported) => {
   if (supported) {
-    const analytics = getAnalytics(app);
+    getAnalytics(app);
     console.log("Firebase Analytics inicializado.");
   } else {
     console.log("Firebase Analytics no es compatible en este entorno.");

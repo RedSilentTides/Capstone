@@ -73,7 +73,7 @@ export default function RegisterScreen() {
     <View style={styles.container}>
       {/* Añadimos el logo */}
       <Image 
-        source={require('../assets/images/LogoVigilIa.png')} // Asegúrate que la ruta sea correcta
+        source={require('../../assets/images/LogoVigilIa.png')} // Asegúrate que la ruta sea correcta
         style={styles.logo}
         resizeMode="contain"
       />

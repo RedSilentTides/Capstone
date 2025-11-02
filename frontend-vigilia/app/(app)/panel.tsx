@@ -5,51 +5,53 @@ import {
 import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight, LogOut, Home } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
+import { auth } from '../../firebaseConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// El componente ya no necesita props para abrir/cerrar
-export default function SlidingPanel() {
+export default function PanelScreen() {
   const router = useRouter();
 
   const handleLogout = () => {
     const performLogout = async () => {
       try {
+        console.log('[PANEL] Ejecutando signOut...');
         await signOut(auth);
-        // onAuthStateChanged se encargará de la redirección.
-        // No necesitamos hacer nada más aquí.
+        console.log('[PANEL] signOut completado sin errores.');
+        router.back(); // Cierra el panel
       } catch (error) {
-        console.error('Error al cerrar sesión:', error);
+        console.error('[PANEL] Error durante signOut:', error);
         Alert.alert('Error', 'No se pudo cerrar sesión correctamente');
       }
     };
 
-    Alert.alert(
-      "Cerrar Sesión",
-      "¿Estás seguro que deseas cerrar sesión?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Cerrar Sesión", style: "destructive", onPress: performLogout }
-      ]
-    );
+    if (Platform.OS === 'web') {
+        if (window.confirm('¿Estás seguro que deseas cerrar sesión?')) {
+            performLogout();
+        }
+    } else {
+        Alert.alert(
+            "Cerrar Sesión",
+            "¿Estás seguro que deseas cerrar sesión?",
+            [
+                { text: "Cancelar", style: "cancel" },
+                { text: "Cerrar Sesión", style: "destructive", onPress: performLogout }
+            ]
+        );
+    }
   };
 
-  // Ahora usamos router.back() para cerrar
   const navigate = (path: string) => {
-    router.back(); // Primero cierra el panel
-    router.push(path); // Luego navega
+    // Usar replace en lugar de back + push para evitar problemas en iOS
+    router.replace(path as any);
   };
 
   return (
     <View style={styles.modalContainer}>
-      {/* Overlay para cerrar al tocar fuera */}
-      <Pressable style={styles.overlay} onPress={() => router.back()} />
-
-      {/* Contenido del Panel */}
+      {/* Contenido del Panel a la izquierda */}
       <SafeAreaView style={styles.slidingPanel} edges={['top', 'bottom']}>
         <View style={styles.panelHeader}>
           <View style={styles.logoContainer}>
-            <Image source={require('../assets/images/LogoVigilIa.png')} style={styles.logo} />
+            <Image source={require('../../assets/images/LogoVigilIa.png')} style={styles.logo} />
             <Text style={styles.appName}>VigilIA</Text>
           </View>
           <Pressable onPress={() => router.back()} style={styles.closeButton}>
@@ -64,9 +66,7 @@ export default function SlidingPanel() {
           <MenuItem icon={<CalendarCheck size={20} color="#374151" />} text="Recordatorios" onPress={() => navigate('/cuidador/recordatorios')} />
           <MenuItem icon={<Settings size={20} color="#374151" />} text="Configuración" onPress={() => navigate('/configuracion')} />
           <MenuItem icon={<HelpCircle size={20} color="#374151" />} text="Ayuda" onPress={() => navigate('/ayuda')} />
-          
           <View style={styles.separator} />
-
           <Pressable style={styles.logoutMenuItem} onPress={handleLogout}>
             <View style={styles.menuLeft}>
               <LogOut size={20} color="#ef4444" />
@@ -75,6 +75,9 @@ export default function SlidingPanel() {
           </Pressable>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Overlay para cerrar al tocar fuera */}
+      <Pressable style={styles.overlay} onPress={() => router.back()} />
     </View>
   );
 }
@@ -90,75 +93,26 @@ const MenuItem = ({ icon, text, onPress }: { icon: React.ReactNode; text: string
 );
 
 const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)', // Un poco más sutil
-  },
+  modalContainer: { flex: 1, flexDirection: 'row' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
   slidingPanel: {
     width: 280,
     backgroundColor: '#fff',
     ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOpacity: 0.25,
-        shadowOffset: { width: -4, height: 0 },
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 20,
-      },
-      default: { // web
-        boxShadow: '-4px 0px 12px rgba(0, 0, 0, 0.25)',
-      }
+      ios: { shadowColor: '#000', shadowOpacity: 0.25, shadowOffset: { width: -4, height: 0 }, shadowRadius: 12 },
+      android: { elevation: 20 },
+      default: { boxShadow: '-4px 0px 12px rgba(0, 0, 0, 0.25)' }
     })
   },
-  panelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  panelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  logoContainer: { flexDirection: 'row', alignItems: 'center' },
   logo: { width: 40, height: 40, marginRight: 10 },
   appName: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
-  closeButton: {
-    padding: 4,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-  },
+  closeButton: { padding: 4 },
+  menuItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20 },
   menuLeft: { flexDirection: 'row', alignItems: 'center' },
   menuText: { fontSize: 16, marginLeft: 16, color: '#374151' },
-  separator: {
-    height: 1,
-    backgroundColor: '#e5e7eb',
-    marginVertical: 12,
-  },
-  logoutMenuItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginTop: 8,
-  },
-  logoutText: {
-    fontSize: 16,
-    marginLeft: 16,
-    color: '#ef4444',
-    fontWeight: '600',
-  },
+  separator: { height: 1, backgroundColor: '#e5e7eb', marginVertical: 12 },
+  logoutMenuItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20, marginTop: 8 },
+  logoutText: { fontSize: 16, marginLeft: 16, color: '#ef4444', fontWeight: '600' },
 });

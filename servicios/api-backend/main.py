@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException, Depends, status, Header
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr, constr, validator
 from sqlalchemy import create_engine, text, engine as sqlalchemy_engine
+import json
 import firebase_admin
 from firebase_admin import credentials, auth
 from firebase_admin.exceptions import FirebaseError
@@ -105,10 +106,12 @@ class AlertConfigUpdate(BaseModel):
 
 class EventoCaidaInfo(BaseModel):
     id: int
-    dispositivo_id: int
-    timestamp_caida: datetime
+    adulto_mayor_id: int
+    dispositivo_id: int | None = None
+    timestamp_alerta: datetime
     url_video_almacenado: str | None = None
-    confirmado_por_usuario: bool | None = None
+    confirmado_por_cuidador: bool | None = None
+    notas: str | None = None
     detalles_adicionales: dict | None = None
     nombre_dispositivo: str | None = None
     nombre_adulto_mayor: str | None = None
@@ -255,6 +258,26 @@ class AdultoMayorInfo(BaseModel):
     notas_relevantes: str | None
     token_fcm_app_adulto: str | None
     fecha_registro: datetime
+
+class AlertaCreate(BaseModel):
+    adulto_mayor_id: int
+    tipo_alerta: str = 'ayuda'  # 'ayuda' o 'caida'
+    dispositivo_id: int | None = None  # Solo para caídas
+    url_video_almacenado: str | None = None  # Solo para caídas
+    detalles_adicionales: dict | None = None  # JSONB con info adicional
+
+class AlertaInfo(BaseModel):
+    id: int
+    adulto_mayor_id: int
+    tipo_alerta: str
+    timestamp_alerta: datetime
+    dispositivo_id: int | None
+    url_video_almacenado: str | None
+    confirmado_por_cuidador: bool | None
+    notas: str | None
+    detalles_adicionales: dict | None
+    fecha_registro: datetime
+    nombre_adulto_mayor: str | None = None
 
 # --- Seguridad y Autenticación ---
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -631,21 +654,24 @@ def get_eventos_caida(
     try:
         with engine.connect() as db_conn:
             query = text("""
-                SELECT 
-                    ec.id, 
-                    ec.dispositivo_id, 
-                    ec.timestamp_caida, 
-                    ec.url_video_almacenado, 
-                    ec.confirmado_por_usuario, 
-                    ec.detalles_adicionales,
+                SELECT
+                    a.id,
+                    a.adulto_mayor_id,
+                    a.dispositivo_id,
+                    a.timestamp_alerta,
+                    a.url_video_almacenado,
+                    a.confirmado_por_cuidador,
+                    a.notas,
+                    a.detalles_adicionales,
                     d.nombre_dispositivo,
                     am.nombre_completo as nombre_adulto_mayor
-                FROM eventos_caida ec
-                JOIN dispositivos d ON ec.dispositivo_id = d.id
-                JOIN adultos_mayores am ON d.adulto_mayor_id = am.id
+                FROM alertas a
+                JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                LEFT JOIN dispositivos d ON a.dispositivo_id = d.id
                 JOIN cuidadores_adultos_mayores cam ON am.id = cam.adulto_mayor_id
-                WHERE cam.usuario_id = :cuidador_id 
-                ORDER BY ec.timestamp_caida DESC
+                WHERE cam.usuario_id = :cuidador_id
+                    AND a.tipo_alerta = 'caida'
+                ORDER BY a.timestamp_alerta DESC
                 LIMIT :limit OFFSET :offset
             """)
 
@@ -679,24 +705,45 @@ async def notificar_evento_caida(
         with engine.connect() as db_conn:
             trans = db_conn.begin()
             try:
+                # Primero, obtener el adulto_mayor_id asociado al dispositivo
+                query_adulto = text("""
+                    SELECT adulto_mayor_id FROM dispositivos WHERE id = :dispositivo_id
+                """)
+                adulto_result = db_conn.execute(query_adulto, {
+                    "dispositivo_id": evento.dispositivo_id
+                }).fetchone()
+
+                if not adulto_result or adulto_result[0] is None:
+                    raise Exception(f"No se encontró adulto_mayor_id para dispositivo_id={evento.dispositivo_id}")
+
+                adulto_mayor_id = adulto_result[0]
+
+                # Insertar en la tabla alertas con tipo_alerta='caida'
                 query = text("""
-                    INSERT INTO eventos_caida (dispositivo_id, timestamp_caida, url_video_almacenado, confirmado_por_usuario)
-                    VALUES (:dispositivo_id, :timestamp_caida, :url_video_almacenado, NULL)
+                    INSERT INTO alertas (
+                        adulto_mayor_id, tipo_alerta, dispositivo_id,
+                        timestamp_alerta, url_video_almacenado, confirmado_por_cuidador
+                    )
+                    VALUES (
+                        :adulto_mayor_id, 'caida', :dispositivo_id,
+                        :timestamp_alerta, :url_video_almacenado, NULL
+                    )
                     RETURNING id
                 """)
                 result = db_conn.execute(query, {
+                    "adulto_mayor_id": adulto_mayor_id,
                     "dispositivo_id": evento.dispositivo_id,
-                    "timestamp_caida": evento.timestamp_caida,
+                    "timestamp_alerta": evento.timestamp_caida,
                     "url_video_almacenado": evento.url_video_almacenado
                 }).fetchone()
-                
+
                 trans.commit()
-                
+
                 if not result:
-                    raise Exception("INSERT no devolvió el ID del evento de caída.")
-                
+                    raise Exception("INSERT no devolvió el ID de la alerta de caída.")
+
                 evento_id = result[0]
-                print(f"✅ Evento de caída registrado en BD con ID: {evento_id}")
+                print(f"✅ Alerta de caída registrada en BD con ID: {evento_id} (adulto_mayor_id: {adulto_mayor_id})")
 
                 # --- TODO: LÓGICA DE NOTIFICACIÓN PUSH ---
                 # Aquí debes agregar la lógica para:
@@ -1512,5 +1559,249 @@ def actualizar_adulto_mayor(
         print(f"--- ERROR AL ACTUALIZAR ADULTO MAYOR ---")
         print(f"ERROR: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
+
+
+# --- ENDPOINTS DE ALERTAS ---
+
+@app.post("/alertas", response_model=AlertaInfo, status_code=status.HTTP_201_CREATED)
+def crear_alerta(
+    alerta_data: AlertaCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Crea una alerta (ayuda o caída). Solo el adulto mayor puede crear su propia alerta.
+    """
+    user_info = read_users_me(current_user)
+
+    # Verificar que el usuario es adulto_mayor
+    if user_info.rol != 'adulto_mayor':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los adultos mayores pueden crear alertas."
+        )
+
+    # Verificar que el adulto_mayor_id corresponde al usuario actual
+    with engine.connect() as db_conn:
+        query_check = text("""
+            SELECT id FROM adultos_mayores
+            WHERE id = :adulto_mayor_id AND usuario_id = :usuario_id
+        """)
+        result_check = db_conn.execute(query_check, {
+            "adulto_mayor_id": alerta_data.adulto_mayor_id,
+            "usuario_id": user_info.id
+        }).fetchone()
+
+        if not result_check:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para crear alertas para este perfil."
+            )
+
+    # Crear la alerta
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            query_insert = text("""
+                INSERT INTO alertas (
+                    adulto_mayor_id, tipo_alerta, timestamp_alerta,
+                    dispositivo_id, url_video_almacenado, detalles_adicionales
+                )
+                VALUES (
+                    :adulto_mayor_id, :tipo_alerta, NOW(),
+                    :dispositivo_id, :url_video_almacenado, :detalles_adicionales
+                )
+                RETURNING id, adulto_mayor_id, tipo_alerta, timestamp_alerta,
+                          dispositivo_id, url_video_almacenado,
+                          confirmado_por_cuidador, notas, detalles_adicionales, fecha_registro
+            """)
+            result = db_conn.execute(query_insert, {
+                "adulto_mayor_id": alerta_data.adulto_mayor_id,
+                "tipo_alerta": alerta_data.tipo_alerta,
+                "dispositivo_id": alerta_data.dispositivo_id,
+                "url_video_almacenado": alerta_data.url_video_almacenado,
+                "detalles_adicionales": json.dumps(alerta_data.detalles_adicionales) if alerta_data.detalles_adicionales else None
+            }).fetchone()
+            trans.commit()
+
+            # Obtener nombre del adulto mayor
+            query_nombre = text("""
+                SELECT nombre_completo FROM adultos_mayores WHERE id = :id
+            """)
+            nombre_result = db_conn.execute(query_nombre, {"id": alerta_data.adulto_mayor_id}).fetchone()
+            nombre_adulto_mayor = nombre_result[0] if nombre_result else None
+
+            print(f"✅ Alerta creada (tipo: {alerta_data.tipo_alerta}) para adulto mayor {alerta_data.adulto_mayor_id}")
+
+            return AlertaInfo(
+                **result._mapping,
+                nombre_adulto_mayor=nombre_adulto_mayor
+            )
+
+    except Exception as e:
+        print(f"❌ Error al crear alerta: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear la alerta: {str(e)}"
+        )
+
+
+@app.get("/alertas", response_model=list[AlertaInfo])
+def get_alertas(
+    adulto_mayor_id: int | None = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Obtiene alertas (ayuda y caídas).
+    - Cuidadores: ven todas las alertas de sus adultos mayores
+    - Adultos mayores: ven solo sus propias alertas
+    """
+    user_info = read_users_me(current_user)
+
+    with engine.connect() as db_conn:
+        if user_info.rol == 'cuidador':
+            # Obtener IDs de adultos mayores bajo su cuidado
+            query_adultos = text("""
+                SELECT adulto_mayor_id FROM cuidadores_adultos_mayores
+                WHERE usuario_id = :usuario_id
+            """)
+            adultos_result = db_conn.execute(query_adultos, {"usuario_id": user_info.id}).fetchall()
+            adultos_ids = [row[0] for row in adultos_result]
+
+            if not adultos_ids:
+                return []
+
+            # Construir query para obtener alertas
+            if adulto_mayor_id:
+                # Verificar que el cuidador tiene acceso a este adulto mayor
+                if adulto_mayor_id not in adultos_ids:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="No tienes permiso para ver alertas de este adulto mayor."
+                    )
+                query_alertas = text("""
+                    SELECT a.*, am.nombre_completo as nombre_adulto_mayor
+                    FROM alertas a
+                    JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                    WHERE a.adulto_mayor_id = :adulto_mayor_id
+                    ORDER BY a.timestamp_alerta DESC
+                """)
+                params = {"adulto_mayor_id": adulto_mayor_id}
+            else:
+                # Obtener todas las alertas de todos sus adultos mayores
+                placeholders = ','.join([f':id{i}' for i in range(len(adultos_ids))])
+                query_alertas = text(f"""
+                    SELECT a.*, am.nombre_completo as nombre_adulto_mayor
+                    FROM alertas a
+                    JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                    WHERE a.adulto_mayor_id IN ({placeholders})
+                    ORDER BY a.timestamp_alerta DESC
+                """)
+                params = {f'id{i}': aid for i, aid in enumerate(adultos_ids)}
+
+            alertas_result = db_conn.execute(query_alertas, params).fetchall()
+
+        elif user_info.rol == 'adulto_mayor':
+            # Obtener el adulto_mayor_id del usuario
+            query_adulto_mayor = text("""
+                SELECT id FROM adultos_mayores WHERE usuario_id = :usuario_id
+            """)
+            adulto_result = db_conn.execute(query_adulto_mayor, {"usuario_id": user_info.id}).fetchone()
+
+            if not adulto_result:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Perfil de adulto mayor no encontrado."
+                )
+
+            adulto_id = adulto_result[0]
+            query_alertas = text("""
+                SELECT a.*, am.nombre_completo as nombre_adulto_mayor
+                FROM alertas a
+                JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                WHERE a.adulto_mayor_id = :adulto_mayor_id
+                ORDER BY a.timestamp_alerta DESC
+            """)
+            alertas_result = db_conn.execute(query_alertas, {"adulto_mayor_id": adulto_id}).fetchall()
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para ver alertas."
+            )
+
+        return [AlertaInfo(**row._mapping) for row in alertas_result]
+
+
+@app.put("/alertas/{alerta_id}", response_model=AlertaInfo)
+def actualizar_alerta(
+    alerta_id: int,
+    confirmado: bool,
+    notas: str | None = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Permite al cuidador marcar una alerta como confirmada/falsa alarma y agregar notas.
+    """
+    user_info = read_users_me(current_user)
+
+    if user_info.rol != 'cuidador':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los cuidadores pueden actualizar alertas."
+        )
+
+    with engine.connect() as db_conn:
+        # Verificar que el cuidador tiene acceso a este adulto mayor
+        query_check = text("""
+            SELECT a.adulto_mayor_id
+            FROM alertas a
+            JOIN cuidadores_adultos_mayores cam ON a.adulto_mayor_id = cam.adulto_mayor_id
+            WHERE a.id = :alerta_id AND cam.usuario_id = :usuario_id
+        """)
+        check_result = db_conn.execute(query_check, {
+            "alerta_id": alerta_id,
+            "usuario_id": user_info.id
+        }).fetchone()
+
+        if not check_result:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para actualizar esta alerta."
+            )
+
+        # Actualizar la alerta
+        trans = db_conn.begin()
+        query_update = text("""
+            UPDATE alertas
+            SET confirmado_por_cuidador = :confirmado, notas = :notas
+            WHERE id = :alerta_id
+            RETURNING id, adulto_mayor_id, tipo_alerta, timestamp_alerta,
+                      dispositivo_id, url_video_almacenado,
+                      confirmado_por_cuidador, notas, detalles_adicionales, fecha_registro
+        """)
+        result = db_conn.execute(query_update, {
+            "confirmado": confirmado,
+            "notas": notas,
+            "alerta_id": alerta_id
+        }).fetchone()
+        trans.commit()
+
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Alerta no encontrada."
+            )
+
+        # Obtener nombre del adulto mayor
+        query_nombre = text("""
+            SELECT nombre_completo FROM adultos_mayores WHERE id = :id
+        """)
+        nombre_result = db_conn.execute(query_nombre, {"id": result.adulto_mayor_id}).fetchone()
+        nombre_adulto_mayor = nombre_result[0] if nombre_result else None
+
+        return AlertaInfo(
+            **result._mapping,
+            nombre_adulto_mayor=nombre_adulto_mayor
+        )
 
 # --- FIN DE ENDPOINTS ---

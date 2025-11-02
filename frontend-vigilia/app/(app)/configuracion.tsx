@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Switch, TextInput, Button, Alert, ActivityIndicator, ScrollView, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Switch, TextInput, Button, Alert, ActivityIndicator, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from './_layout';
-import CustomHeader from '../components/CustomHeader';
-import SlidingPanel from '../components/Slidingpanel'; 
+import { useAuth } from '../../contexts/AuthContext';
+import CustomHeader from '../../components/CustomHeader'; 
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -29,39 +26,23 @@ interface AlertConfig {
 
 export default function ConfiguracionScreen() {
   const router = useRouter();
-  const { setAuthState } = useAuth();
+  const { user } = useAuth();
   const [config, setConfig] = useState<Partial<AlertConfig>>({}); // Usamos Partial para estado inicial
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-
-  // Función reutilizable para obtener el token
-  const getToken = useCallback(async (): Promise<string | null> => {
-    const tokenKey = 'userToken';
-    if (Platform.OS === 'web') {
-      return await AsyncStorage.getItem(tokenKey);
-    } else {
-      return await SecureStore.getItemAsync(tokenKey);
-    }
-  }, []);
 
   // Función para cargar la configuración actual
   const fetchConfig = useCallback(async () => {
+    if (!user) return;
+
     setIsLoading(true);
     setError(null);
-    const token = await getToken();
-
-    if (!token) {
-      Alert.alert('Error', 'No se encontró tu sesión. Por favor, inicia sesión de nuevo.');
-      setAuthState(false);
-      router.replace('/login');
-      return;
-    }
 
     try {
       console.log('Obteniendo configuración...');
+      const token = await user.getIdToken();
       const response = await axios.get<AlertConfig>(`${API_URL}/configuracion/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -76,18 +57,15 @@ export default function ConfiguracionScreen() {
       console.error('Error al obtener configuración:', err);
       if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
          setError('Tu sesión ha expirado.');
-         setAuthState(false);
-         setTimeout(() => router.replace('/login'), 2000);
       } else if (axios.isAxiosError(err) && err.response?.status === 404) {
           setError('No se encontró tu configuración. ¿Registro incompleto? Contacta soporte.');
-          // Esto no debería pasar si el registro funciona bien
       } else {
         setError('No se pudo cargar la configuración.');
       }
     } finally {
       setIsLoading(false);
     }
-  }, [getToken, router, setAuthState]);
+  }, [user]);
 
   // Cargar configuración al montar la pantalla
   useEffect(() => {
@@ -146,17 +124,13 @@ export default function ConfiguracionScreen() {
 
   // Función para guardar los cambios
   const handleSaveChanges = async () => {
-    setIsSaving(true);
-    setError(null);
-    const token = await getToken();
-
-    if (!token) {
+    if (!user) {
       Alert.alert('Error', 'No se encontró tu sesión.');
-      setIsSaving(false);
-      setAuthState(false);
-      router.replace('/login');
       return;
     }
+
+    setIsSaving(true);
+    setError(null);
 
     // Prepara los datos a enviar (solo los campos modificables)
     // Usamos ?. para evitar errores si config aún no se ha cargado
@@ -172,6 +146,7 @@ export default function ConfiguracionScreen() {
 
     try {
       console.log('Guardando configuración:', dataToSend);
+      const token = await user.getIdToken();
       await axios.put(`${API_URL}/configuracion/`, dataToSend, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -182,8 +157,6 @@ export default function ConfiguracionScreen() {
       console.error('Error al guardar configuración:', err);
        if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
          setError('Tu sesión ha expirado.');
-         setAuthState(false);
-         setTimeout(() => router.replace('/login'), 2000);
       } else {
          setError('No se pudo guardar la configuración.');
          Alert.alert('Error', 'No se pudo guardar la configuración. Intenta de nuevo.');
@@ -224,7 +197,7 @@ export default function ConfiguracionScreen() {
     <View style={{ flex: 1 }}>
       <CustomHeader
         title="Configuración"
-        onMenuPress={() => setIsPanelOpen(true)}
+        onMenuPress={() => router.push('/panel')}
         showBackButton={true}
       />
       <ScrollView style={styles.container}>
@@ -311,7 +284,6 @@ export default function ConfiguracionScreen() {
       </Pressable>
 
       </ScrollView>
-      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
     </View>
   );
 }

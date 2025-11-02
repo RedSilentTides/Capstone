@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, Pressable, ScrollView,
-    Platform, ActivityIndicator, RefreshControl
+    ActivityIndicator, RefreshControl, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import CustomHeader from '../components/CustomHeader';
-import SlidingPanel from '../components/Slidingpanel';
-import { UserPlus, Check, X, Clock, Mail } from 'lucide-react-native';
+import CustomHeader from '../../components/CustomHeader';
+import { useAuth } from '../../contexts/AuthContext';
+import { UserPlus, Clock, CheckCircle, XCircle, Mail, Check, X } from 'lucide-react-native';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -28,47 +26,31 @@ type SolicitudCuidado = {
 
 export default function SolicitudesScreen() {
     const router = useRouter();
+    const { user } = useAuth(); // <-- AÑADIDO
     const [solicitudes, setSolicitudes] = useState<SolicitudCuidado[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [isPanelOpen, setIsPanelOpen] = useState(false);
-
-    const getToken = useCallback(async (): Promise<string | null> => {
-        const tokenKey = 'userToken';
-        if (Platform.OS === 'web') return await AsyncStorage.getItem(tokenKey);
-        else return await SecureStore.getItemAsync(tokenKey);
-    }, []);
 
     const fetchSolicitudes = useCallback(async (isRefreshing = false) => {
+        if (!user) return;
         if (!isRefreshing) setLoading(true);
         setError(null);
 
         try {
-            const token = await getToken();
-            if (!token) {
-                setError('No se encontró el token de autenticación.');
-                return;
-            }
-
+            const token = await user.getIdToken();
             const response = await axios.get(`${API_URL}/solicitudes-cuidado/recibidas`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-
             setSolicitudes(response.data);
         } catch (err) {
             console.error('Error al obtener solicitudes:', err);
-            if (axios.isAxiosError(err)) {
-                const message = err.response?.data?.detail || 'Error al obtener solicitudes.';
-                setError(message);
-            } else {
-                setError('Error inesperado al obtener solicitudes.');
-            }
+            setError(axios.isAxiosError(err) ? err.response?.data?.detail || 'Error al obtener solicitudes.' : 'Error inesperado.');
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [getToken]);
+    }, [user]);
 
     useEffect(() => {
         fetchSolicitudes();
@@ -80,47 +62,34 @@ export default function SolicitudesScreen() {
     };
 
     const handleAceptar = async (solicitudId: number) => {
+        if (!user) return;
         const confirmacion = Platform.OS === 'web'
             ? window.confirm('¿Estás seguro de que deseas aceptar esta solicitud? Tu rol cambiará a "Adulto Mayor" y se creará una relación con el cuidador.')
-            : true; // En móvil usaremos Alert nativo
+            : true;
 
         if (!confirmacion) return;
 
         try {
-            const token = await getToken();
-            if (!token) {
-                if (Platform.OS === 'web') {
-                    alert('Error: No se encontró el token de autenticación.');
-                }
-                return;
-            }
-
+            const token = await user.getIdToken();
             await axios.put(
                 `${API_URL}/solicitudes-cuidado/${solicitudId}/aceptar`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-
-            if (Platform.OS === 'web') {
-                alert('Solicitud aceptada exitosamente. Ahora eres un adulto mayor bajo el cuidado de esta persona.');
-            }
-
-            // Recargar solicitudes y redirigir al dashboard
+            alert('Solicitud aceptada exitosamente.');
             await fetchSolicitudes();
             router.push('/');
         } catch (err) {
             console.error('Error al aceptar solicitud:', err);
             const errorMsg = axios.isAxiosError(err)
                 ? (err.response?.data?.detail || 'Error al aceptar la solicitud.')
-                : 'Error inesperado al aceptar la solicitud.';
-
-            if (Platform.OS === 'web') {
-                alert(`Error: ${errorMsg}`);
-            }
+                : 'Error inesperado.';
+            alert(`Error: ${errorMsg}`);
         }
     };
 
     const handleRechazar = async (solicitudId: number) => {
+        if (!user) return;
         const confirmacion = Platform.OS === 'web'
             ? window.confirm('¿Estás seguro de que deseas rechazar esta solicitud?')
             : true;
@@ -128,35 +97,20 @@ export default function SolicitudesScreen() {
         if (!confirmacion) return;
 
         try {
-            const token = await getToken();
-            if (!token) {
-                if (Platform.OS === 'web') {
-                    alert('Error: No se encontró el token de autenticación.');
-                }
-                return;
-            }
-
+            const token = await user.getIdToken();
             await axios.put(
                 `${API_URL}/solicitudes-cuidado/${solicitudId}/rechazar`,
                 {},
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-
-            if (Platform.OS === 'web') {
-                alert('Solicitud rechazada exitosamente.');
-            }
-
-            // Recargar solicitudes
+            alert('Solicitud rechazada exitosamente.');
             await fetchSolicitudes();
         } catch (err) {
             console.error('Error al rechazar solicitud:', err);
             const errorMsg = axios.isAxiosError(err)
                 ? (err.response?.data?.detail || 'Error al rechazar la solicitud.')
-                : 'Error inesperado al rechazar la solicitud.';
-
-            if (Platform.OS === 'web') {
-                alert(`Error: ${errorMsg}`);
-            }
+                : 'Error inesperado.';
+            alert(`Error: ${errorMsg}`);
         }
     };
 
@@ -254,7 +208,7 @@ export default function SolicitudesScreen() {
         <View style={{ flex: 1 }}>
             <CustomHeader
                 title="Solicitudes de Cuidado"
-                onMenuPress={() => setIsPanelOpen(true)}
+                onMenuPress={() => router.push('/panel')}
                 showBackButton={true}
             />
 
@@ -295,7 +249,7 @@ export default function SolicitudesScreen() {
                     </>
                 )}
             </ScrollView>
-            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+
         </View>
     );
 }

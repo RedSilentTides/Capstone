@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, Pressable, ScrollView,
-    Platform, ActivityIndicator, RefreshControl
+    ActivityIndicator, RefreshControl
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import CustomHeader from '../../../components/CustomHeader';
-import SlidingPanel from '../../../components/Slidingpanel';
+import CustomHeader from '../../../../components/CustomHeader';
 import { User, Calendar, MapPin, FileText, Bell, AlertTriangle, Heart } from 'lucide-react-native';
+import { useAuth } from '../../../../contexts/AuthContext';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -26,39 +24,32 @@ type AdultoMayorDetalle = {
 
 type EventoCaida = {
     id: number;
-    dispositivo_id: number;
-    timestamp_caida: string;
+    adulto_mayor_id: number;
+    dispositivo_id?: number | null;
+    timestamp_alerta: string;
     url_video_almacenado?: string | null;
-    confirmado_por_usuario?: boolean | null;
+    confirmado_por_cuidador?: boolean | null;
+    notas?: string | null;
     nombre_dispositivo?: string | null;
 };
 
 export default function AdultoMayorDetalleScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
+    const { user } = useAuth();
     const [adulto, setAdulto] = useState<AdultoMayorDetalle | null>(null);
     const [caidas, setCaidas] = useState<EventoCaida[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [isPanelOpen, setIsPanelOpen] = useState(false);
-
-    const getToken = useCallback(async (): Promise<string | null> => {
-        const tokenKey = 'userToken';
-        if (Platform.OS === 'web') return await AsyncStorage.getItem(tokenKey);
-        else return await SecureStore.getItemAsync(tokenKey);
-    }, []);
 
     const fetchDatos = useCallback(async (isRefreshing = false) => {
+        if (!user) return;
         if (!isRefreshing) setLoading(true);
         setError(null);
 
         try {
-            const token = await getToken();
-            if (!token) {
-                setError('No se encontró el token de autenticación.');
-                return;
-            }
+            const token = await user.getIdToken();
 
             // Obtener datos del adulto mayor
             const adultoResponse = await axios.get(`${API_URL}/adultos-mayores`, {
@@ -101,7 +92,7 @@ export default function AdultoMayorDetalleScreen() {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [getToken, id]);
+    }, [user, id]);
 
     useEffect(() => {
         fetchDatos();
@@ -151,7 +142,7 @@ export default function AdultoMayorDetalleScreen() {
                 <Pressable style={styles.retryButton} onPress={() => fetchDatos()}>
                     <Text style={styles.retryButtonText}>Reintentar</Text>
                 </Pressable>
-                <Pressable style={styles.backButton} onPress={() => router.back()}>
+                <Pressable style={styles.backButton} onPress={() => router.canGoBack() ? router.back() : router.replace('/cuidador/adultos-mayores')}>
                     <Text style={styles.backButtonText}>Volver</Text>
                 </Pressable>
             </View>
@@ -162,7 +153,7 @@ export default function AdultoMayorDetalleScreen() {
         <View style={{ flex: 1 }}>
             <CustomHeader
                 title={adulto.nombre_completo}
-                onMenuPress={() => setIsPanelOpen(true)}
+                onMenuPress={() => router.push('/panel')}
                 showBackButton={true}
             />
 
@@ -268,23 +259,23 @@ export default function AdultoMayorDetalleScreen() {
                                     </Text>
                                 </View>
                                 <Text style={styles.caidaFecha}>
-                                    {formatFecha(caida.timestamp_caida)}
+                                    {formatFecha(caida.timestamp_alerta)}
                                 </Text>
                                 {caida.nombre_dispositivo && (
                                     <Text style={styles.caidaDispositivo}>
                                         Dispositivo: {caida.nombre_dispositivo}
                                     </Text>
                                 )}
-                                {caida.confirmado_por_usuario !== null && (
+                                {caida.confirmado_por_cuidador !== null && (
                                     <View style={[
                                         styles.caidaEstado,
-                                        { backgroundColor: caida.confirmado_por_usuario ? '#dcfce7' : '#fef3c7' }
+                                        { backgroundColor: caida.confirmado_por_cuidador ? '#dcfce7' : '#fef3c7' }
                                     ]}>
                                         <Text style={[
                                             styles.caidaEstadoTexto,
-                                            { color: caida.confirmado_por_usuario ? '#16a34a' : '#f59e0b' }
+                                            { color: caida.confirmado_por_cuidador ? '#16a34a' : '#f59e0b' }
                                         ]}>
-                                            {caida.confirmado_por_usuario ? 'Confirmada' : 'Pendiente'}
+                                            {caida.confirmado_por_cuidador ? 'Confirmada' : 'Pendiente'}
                                         </Text>
                                     </View>
                                 )}
@@ -300,8 +291,6 @@ export default function AdultoMayorDetalleScreen() {
                     </View>
                 )}
             </ScrollView>
-
-            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
         </View>
     );
 }

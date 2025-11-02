@@ -16,6 +16,15 @@ export default function CustomHeader({ title, onMenuPress, showBackButton = true
   // Determinar si estamos en la página de inicio
   const isHomePage = pathname === '/' || pathname === '/index';
 
+  // Función segura para navegar hacia atrás
+  const handleBackPress = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  };
+
   return (
     <View style={styles.header}>
       {/* Botón izquierdo: Siempre muestra el menú hamburguesa */}
@@ -33,7 +42,7 @@ export default function CustomHeader({ title, onMenuPress, showBackButton = true
       {/* Botón derecho: Muestra flecha de regreso si showBackButton=true y no estamos en home */}
       <View style={styles.rightSection}>
         {showBackButton && !isHomePage ? (
-          <Pressable onPress={() => router.back()} style={styles.iconButton}>
+          <Pressable onPress={handleBackPress} style={styles.iconButton}>
             <ArrowLeft size={24} color="#ffffff" />
           </Pressable>
         ) : null}

@@ -1,8 +1,6 @@
 // app/cuidador/_layout.tsx
 import { Stack } from 'expo-router';
-import React, { useState } from 'react';
-import CustomHeader from '../../components/CustomHeader';
-import SlidingPanel from '../../components/Slidingpanel';
+import React from 'react';
 
 export default function CuidadorLayout() {
   // El header ya se maneja dentro de cada pantalla individual
@@ -31,6 +29,12 @@ export default function CuidadorLayout() {
         name="agregar-persona"
         options={{
           headerShown: false, // El header se maneja dentro de agregar-persona.tsx
+        }}
+      />
+      <Stack.Screen
+        name="seleccionar-adulto-recordatorios"
+        options={{
+          headerShown: false, // El header se maneja dentro de seleccionar-adulto-recordatorios.tsx
         }}
       />
     </Stack>

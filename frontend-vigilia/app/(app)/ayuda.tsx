@@ -2,19 +2,17 @@ import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { HelpCircle, ChevronDown, ChevronUp, Phone, Mail } from 'lucide-react-native';
-import CustomHeader from '../components/CustomHeader';
-import SlidingPanel from '../components/Slidingpanel'; 
+import CustomHeader from '../../components/CustomHeader'; 
 
 export default function HelpScreen() { // Renombrado para claridad
   const router = useRouter();
   const [isContactOpen, setIsContactOpen] = useState(false); // Estado para desplegable
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   return (
     <View style={{ flex: 1 }}>
       <CustomHeader
         title="Ayuda y Soporte"
-        onMenuPress={() => setIsPanelOpen(true)}
+        onMenuPress={() => router.push('/panel')}
         showBackButton={true}
       />
       <ScrollView style={styles.container}>
@@ -70,7 +68,6 @@ export default function HelpScreen() { // Renombrado para claridad
       */}
 
       </ScrollView>
-      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
     </View>
   );
 }

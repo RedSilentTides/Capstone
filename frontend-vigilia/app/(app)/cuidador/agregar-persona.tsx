@@ -1,15 +1,13 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TextInput, Pressable,
-    ScrollView, Platform, Alert, ActivityIndicator, RefreshControl
+    ScrollView, Alert, ActivityIndicator, RefreshControl
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import CustomHeader from '../../components/CustomHeader';
-import SlidingPanel from '../../components/Slidingpanel';
+import CustomHeader from '../../../components/CustomHeader';
 import { UserPlus, Clock, CheckCircle, XCircle, Mail } from 'lucide-react-native';
+import { useAuth } from '../../../contexts/AuthContext';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -97,29 +95,23 @@ function SolicitudCard({ solicitud }: { solicitud: SolicitudEnviada }) {
 
 export default function AgregarPersonaScreen() {
     const router = useRouter();
+    const { user } = useAuth();
     const [email, setEmail] = useState('');
     const [mensaje, setMensaje] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
-    const [isPanelOpen, setIsPanelOpen] = useState(false);
     const [solicitudesEnviadas, setSolicitudesEnviadas] = useState<SolicitudEnviada[]>([]);
     const [loadingSolicitudes, setLoadingSolicitudes] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const getToken = useCallback(async (): Promise<string | null> => {
-        const tokenKey = 'userToken';
-        if (Platform.OS === 'web') return await AsyncStorage.getItem(tokenKey);
-        else return await SecureStore.getItemAsync(tokenKey);
-    }, []);
-
     // Función para cargar solicitudes enviadas
     const fetchSolicitudesEnviadas = useCallback(async (isRefreshing = false) => {
+        if (!user) return;
         if (!isRefreshing) setLoadingSolicitudes(true);
 
         try {
-            const token = await getToken();
-            if (!token) return;
+            const token = await user.getIdToken();
 
             const response = await axios.get<SolicitudEnviada[]>(
                 `${API_URL}/solicitudes-cuidado/enviadas`,
@@ -137,7 +129,7 @@ export default function AgregarPersonaScreen() {
             setLoadingSolicitudes(false);
             setRefreshing(false);
         }
-    }, [getToken]);
+    }, [user]);
 
     // Cargar solicitudes al montar el componente
     useEffect(() => {
@@ -166,14 +158,15 @@ export default function AgregarPersonaScreen() {
             return;
         }
 
+        if (!user) {
+            setError('No se encontró información de autenticación.');
+            return;
+        }
+
         setLoading(true);
 
         try {
-            const token = await getToken();
-            if (!token) {
-                setError('No se encontró el token de autenticación.');
-                return;
-            }
+            const token = await user.getIdToken();
 
             const emailEnviado = email.trim(); // Guardar antes de limpiar
 
@@ -233,7 +226,7 @@ export default function AgregarPersonaScreen() {
         <View style={{ flex: 1 }}>
             <CustomHeader
                 title="Agregar Persona a Cuidar"
-                onMenuPress={() => setIsPanelOpen(true)}
+                onMenuPress={() => router.push('/panel')}
                 showBackButton={true}
             />
 
@@ -340,7 +333,6 @@ export default function AgregarPersonaScreen() {
                     </View>
                 )}
             </ScrollView>
-            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
         </View>
     );
 }

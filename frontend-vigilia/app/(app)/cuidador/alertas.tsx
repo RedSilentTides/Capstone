@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart } from 'lucide-react-native';
-import { useAuth } from '../_layout';
-import CustomHeader from '../../components/CustomHeader';
-import SlidingPanel from '../../components/Slidingpanel';
+import { useAuth } from '../../../contexts/AuthContext';
+import CustomHeader from '../../../components/CustomHeader';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
 // Tipos de alertas expandidos
-type AlertType = 'caida' | 'recordatorio' | 'consejo' | 'sistema';
+type AlertType = 'caida' | 'ayuda' | 'recordatorio' | 'consejo' | 'sistema';
 
 interface Alerta {
   id: string;
@@ -28,12 +27,24 @@ interface Alerta {
 
 interface EventoCaida {
   id: number;
-  dispositivo_id: number;
-  timestamp_caida: string;
+  adulto_mayor_id: number;
+  dispositivo_id?: number | null;
+  timestamp_alerta: string;
   url_video_almacenado?: string | null;
-  confirmado_por_usuario?: boolean | null;
+  confirmado_por_cuidador?: boolean | null;
+  notas?: string | null;
   detalles_adicionales?: any | null;
   nombre_dispositivo?: string | null;
+  nombre_adulto_mayor?: string | null;
+}
+
+interface AlertaAyuda {
+  id: number;
+  adulto_mayor_id: number;
+  tipo_alerta: string;
+  timestamp_alerta: string;
+  confirmado_por_cuidador?: boolean | null;
+  notas?: string | null;
   nombre_adulto_mayor?: string | null;
 }
 
@@ -46,6 +57,7 @@ interface Recordatorio {
   frecuencia: 'una_vez' | 'diario' | 'semanal' | 'mensual';
   estado: string;
   tipo_recordatorio?: string;
+  dias_semana?: number[] | null;
   fecha_creacion: string;
   nombre_adulto_mayor?: string | null;
 }
@@ -59,6 +71,7 @@ interface RecordatoriosPorAdultoMayor {
 // Configuración visual para cada tipo de alerta
 const alertConfig: Record<AlertType, { color: string; bgColor: string }> = {
   caida: { color: '#ef4444', bgColor: '#fee2e2' },
+  ayuda: { color: '#f97316', bgColor: '#ffedd5' },
   recordatorio: { color: '#3b82f6', bgColor: '#dbeafe' },
   consejo: { color: '#7c3aed', bgColor: '#ede9fe' },
   sistema: { color: '#10b981', bgColor: '#d1fae5' },
@@ -76,6 +89,8 @@ function AlertCard({ alert, onDismiss }: { alert: Alerta; onDismiss: (id: string
     switch (alert.type) {
       case 'caida':
         return <AlertTriangle size={iconSize} color={iconColor} style={iconStyle} />;
+      case 'ayuda':
+        return <Heart size={iconSize} color={iconColor} style={iconStyle} />;
       case 'recordatorio':
         return <Bell size={iconSize} color={iconColor} style={iconStyle} />;
       case 'consejo':
@@ -116,11 +131,12 @@ function AlertCard({ alert, onDismiss }: { alert: Alerta; onDismiss: (id: string
 }
 
 // Componente de ficha expandible para recordatorios por adulto mayor
-function RecordatoriosAdultoMayorCard({ data, onToggle, isExpanded, recordatoriosLeidos }: {
+function RecordatoriosAdultoMayorCard({ data, onToggle, isExpanded, recordatoriosLeidos, onRecordatorioPress }: {
   data: RecordatoriosPorAdultoMayor;
   onToggle: () => void;
   isExpanded: boolean;
   recordatoriosLeidos: Set<number>;
+  onRecordatorioPress: (recordatorio: Recordatorio) => void;
 }) {
   const tipoRecordatorioIcons: Record<string, string> = {
     medicamento: '💊',
@@ -161,16 +177,20 @@ function RecordatoriosAdultoMayorCard({ data, onToggle, isExpanded, recordatorio
             const formattedTime = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
             return (
-              <View key={rec.id} style={styles.recordatorioItem}>
+              <Pressable
+                key={rec.id}
+                style={styles.recordatorioItem}
+                onPress={() => onRecordatorioPress(rec)}
+              >
                 <Text style={styles.recordatorioIcon}>{icon}</Text>
                 <View style={styles.recordatorioContent}>
                   <Text style={styles.recordatorioTitulo}>{rec.titulo}</Text>
                   {rec.descripcion && (
-                    <Text style={styles.recordatorioDescripcion}>{rec.descripcion}</Text>
+                    <Text style={styles.recordatorioDescripcion} numberOfLines={2}>{rec.descripcion}</Text>
                   )}
                   <Text style={styles.recordatorioFecha}>{formattedDate} • {formattedTime}</Text>
                 </View>
-              </View>
+              </Pressable>
             );
           })}
         </View>
@@ -182,25 +202,16 @@ function RecordatoriosAdultoMayorCard({ data, onToggle, isExpanded, recordatorio
 // Pantalla Principal
 export default function AlertasScreen() {
   const router = useRouter();
-  const { setAuthState } = useAuth();
+  const { user } = useAuth();
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [recordatoriosPorAdultoMayor, setRecordatoriosPorAdultoMayor] = useState<RecordatoriosPorAdultoMayor[]>([]);
   const [expandedAdultos, setExpandedAdultos] = useState<Set<number>>(new Set());
   const [recordatoriosLeidos, setRecordatoriosLeidos] = useState<Set<number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Función reutilizable para obtener el token
-  const getToken = useCallback(async (): Promise<string | null> => {
-    const tokenKey = 'userToken';
-    if (Platform.OS === 'web') {
-      return await AsyncStorage.getItem(tokenKey);
-    } else {
-      return await SecureStore.getItemAsync(tokenKey);
-    }
-  }, []);
+  const [selectedRecordatorio, setSelectedRecordatorio] = useState<Recordatorio | null>(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
 
   // Funciones para persistir recordatorios leídos
   const RECORDATORIOS_LEIDOS_KEY = 'recordatorios_leidos';
@@ -209,7 +220,6 @@ export default function AlertasScreen() {
     try {
       const idsArray = Array.from(recordatoriosIds);
       await AsyncStorage.setItem(RECORDATORIOS_LEIDOS_KEY, JSON.stringify(idsArray));
-      console.log(`✅ Guardados ${idsArray.length} recordatorios leídos en AsyncStorage`);
     } catch (error) {
       console.error('Error al guardar recordatorios leídos:', error);
     }
@@ -220,7 +230,6 @@ export default function AlertasScreen() {
       const stored = await AsyncStorage.getItem(RECORDATORIOS_LEIDOS_KEY);
       if (stored) {
         const idsArray = JSON.parse(stored) as number[];
-        console.log(`✅ Cargados ${idsArray.length} recordatorios leídos desde AsyncStorage`);
         return new Set(idsArray);
       }
       return new Set<number>();
@@ -232,123 +241,90 @@ export default function AlertasScreen() {
 
   const limpiarRecordatoriosAntiguos = useCallback(async (recordatoriosActuales: Recordatorio[]) => {
     try {
-      // Obtener IDs de recordatorios actuales
       const idsActuales = new Set(recordatoriosActuales.map(rec => rec.id));
-
-      // Cargar IDs leídos guardados
       const leidosGuardados = await cargarRecordatoriosLeidos();
-
-      // Filtrar solo los que todavía existen
       const leidosFiltrados = Array.from(leidosGuardados).filter(id => idsActuales.has(id));
-
-      // Si hubo cambios, guardar la versión limpia
       if (leidosFiltrados.length !== leidosGuardados.size) {
-        const eliminados = leidosGuardados.size - leidosFiltrados.length;
         await AsyncStorage.setItem(RECORDATORIOS_LEIDOS_KEY, JSON.stringify(leidosFiltrados));
-        console.log(`🧹 Limpiados ${eliminados} recordatorios antiguos del almacenamiento`);
       }
     } catch (error) {
       console.error('Error al limpiar recordatorios antiguos:', error);
     }
   }, [cargarRecordatoriosLeidos]);
 
-  // Función para convertir eventos de caída a alertas
   const convertirEventosACaidas = (eventos: EventoCaida[]): Alerta[] => {
     return eventos.map(evento => ({
       id: `caida-${evento.id}`,
       type: 'caida' as AlertType,
       title: '¡Alerta de Caída Detectada!',
       message: `Detectado por ${evento.nombre_dispositivo || 'dispositivo'}`,
-      timestamp: new Date(evento.timestamp_caida),
-      read: evento.confirmado_por_usuario !== null,
+      timestamp: new Date(evento.timestamp_alerta),
+      read: evento.confirmado_por_cuidador !== null,
       adulto_mayor_nombre: evento.nombre_adulto_mayor || undefined,
     }));
   };
 
-  // NOTA: Función eliminada - Ya no se generan alertas de prueba
-  // En el futuro, las alertas de recordatorios, consejos y sistema
-  // vendrán de endpoints reales del backend
+  const convertirAlertasAyuda = (alertasAyuda: AlertaAyuda[]): Alerta[] => {
+    return alertasAyuda.map(alerta => ({
+      id: `ayuda-${alerta.id}`,
+      type: 'ayuda' as AlertType,
+      title: '¡Solicitud de Ayuda!',
+      message: alerta.nombre_adulto_mayor || 'Persona bajo cuidado',
+      timestamp: new Date(alerta.timestamp_alerta),
+      read: alerta.confirmado_por_cuidador !== null,
+      adulto_mayor_nombre: alerta.nombre_adulto_mayor || undefined,
+    }));
+  };
 
-  // Función para cargar alertas
   const fetchAlertas = useCallback(async (isRefreshing = false) => {
+    if (!user) return;
     if (!isRefreshing) setIsLoading(true);
     setError(null);
 
-    const token = await getToken();
-
-    if (!token) {
-      setAuthState(false);
-      router.replace('/login');
-      return;
-    }
-
     try {
-      console.log('Obteniendo historial de eventos de caída y recordatorios...');
+        const token = await user.getIdToken();
+        const config = { headers: { Authorization: `Bearer ${token}` } };
 
-      // Obtener eventos de caída reales desde el API
-      const responseCaidas = await axios.get<EventoCaida[]>(`${API_URL}/eventos-caida`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+        const [resCaidas, resAlertasAyuda, resRecordatorios] = await Promise.all([
+            axios.get<EventoCaida[]>(`${API_URL}/eventos-caida`, config),
+            axios.get<AlertaAyuda[]>(`${API_URL}/alertas`, config),
+            axios.get<Recordatorio[]>(`${API_URL}/recordatorios`, config),
+        ]);
 
-      // Convertir eventos a alertas de caída
-      const alertasCaidas = convertirEventosACaidas(responseCaidas.data);
+        const alertasCaidas = convertirEventosACaidas(resCaidas.data);
+        const alertasAyuda = convertirAlertasAyuda(resAlertasAyuda.data);
 
-      // Obtener recordatorios
-      const responseRecordatorios = await axios.get<Recordatorio[]>(`${API_URL}/recordatorios`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+        const recordatoriosAgrupados: Record<number, RecordatoriosPorAdultoMayor> = {};
+        resRecordatorios.data.forEach((rec) => {
+            if (!recordatoriosAgrupados[rec.adulto_mayor_id]) {
+                recordatoriosAgrupados[rec.adulto_mayor_id] = {
+                    adulto_mayor_id: rec.adulto_mayor_id,
+                    nombre_adulto_mayor: rec.nombre_adulto_mayor || 'Sin nombre',
+                    recordatorios: [],
+                };
+            }
+            recordatoriosAgrupados[rec.adulto_mayor_id].recordatorios.push(rec);
+        });
 
-      console.log(`Recordatorios obtenidos: ${responseRecordatorios.data.length}`);
+        const recordatoriosArray = Object.values(recordatoriosAgrupados).map((grupo) => ({
+            ...grupo,
+            recordatorios: grupo.recordatorios.sort((a, b) => new Date(a.fecha_hora_programada).getTime() - new Date(b.fecha_hora_programada).getTime()),
+        }));
 
-      // Agrupar recordatorios por adulto mayor
-      const recordatoriosAgrupados: Record<number, RecordatoriosPorAdultoMayor> = {};
+        setRecordatoriosPorAdultoMayor(recordatoriosArray);
+        limpiarRecordatoriosAntiguos(resRecordatorios.data);
 
-      responseRecordatorios.data.forEach((rec) => {
-        if (!recordatoriosAgrupados[rec.adulto_mayor_id]) {
-          recordatoriosAgrupados[rec.adulto_mayor_id] = {
-            adulto_mayor_id: rec.adulto_mayor_id,
-            nombre_adulto_mayor: rec.nombre_adulto_mayor || 'Sin nombre',
-            recordatorios: [],
-          };
-        }
-        recordatoriosAgrupados[rec.adulto_mayor_id].recordatorios.push(rec);
-      });
+        const todasAlertas = [...alertasCaidas, ...alertasAyuda].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+        setAlertas(todasAlertas);
 
-      // Convertir a array y ordenar recordatorios dentro de cada grupo
-      const recordatoriosArray = Object.values(recordatoriosAgrupados).map((grupo) => ({
-        ...grupo,
-        recordatorios: grupo.recordatorios.sort(
-          (a, b) => new Date(a.fecha_hora_programada).getTime() - new Date(b.fecha_hora_programada).getTime()
-        ),
-      }));
-
-      setRecordatoriosPorAdultoMayor(recordatoriosArray);
-
-      // Limpiar recordatorios antiguos del almacenamiento
-      limpiarRecordatoriosAntiguos(responseRecordatorios.data);
-
-      // Ordenar por fecha (más recientes primero)
-      const todasAlertas = alertasCaidas.sort(
-        (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
-      );
-
-      setAlertas(todasAlertas);
-      console.log(`Alertas cargadas: ${todasAlertas.length}`);
-      console.log(`Adultos mayores con recordatorios: ${recordatoriosArray.length}`);
     } catch (err) {
-      console.error('Error al obtener alertas:', err);
-      if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
-        setError('Tu sesión ha expirado.');
-        setAuthState(false);
-        setTimeout(() => router.replace('/login'), 2000);
-      } else {
-        setError('No se pudieron cargar las alertas. Intenta nuevamente.');
-      }
+        console.error('Error al obtener alertas:', err);
+        setError(axios.isAxiosError(err) ? err.response?.data?.detail || 'No se pudieron cargar las alertas.' : 'Error inesperado.');
     } finally {
-      setIsLoading(false);
-      setRefreshing(false);
+        setIsLoading(false);
+        setRefreshing(false);
     }
-  }, [getToken, router, setAuthState, limpiarRecordatoriosAntiguos]);
+  }, [user, limpiarRecordatoriosAntiguos]);
 
   // Cargar recordatorios leídos desde AsyncStorage al iniciar
   useEffect(() => {
@@ -416,14 +392,18 @@ export default function AlertasScreen() {
   const totalCaidas = alertas.filter(a => a.type === 'caida').length;
   const alertasCaidasNoLeidas = alertas.filter(a => a.type === 'caida' && !a.read).length;
 
-  // Total de alertas no leídas (caídas + recordatorios)
-  const alertasNoLeidas = alertasCaidasNoLeidas + recordatoriosNoLeidos;
+  // Total de alertas de ayuda y no leídas
+  const totalAlertasAyuda = alertas.filter(a => a.type === 'ayuda').length;
+  const alertasAyudaNoLeidas = alertas.filter(a => a.type === 'ayuda' && !a.read).length;
+
+  // Total de alertas no leídas (caídas + ayuda + recordatorios)
+  const alertasNoLeidas = alertasCaidasNoLeidas + alertasAyudaNoLeidas + recordatoriosNoLeidos;
 
   return (
     <View style={styles.container}>
       <CustomHeader
-        title="Historial de Alertas"
-        onMenuPress={() => setIsPanelOpen(true)}
+        title="Historial de Notificaciones"
+        onMenuPress={() => router.push('/panel')}
         showBackButton={true}
       />
 
@@ -446,6 +426,10 @@ export default function AlertasScreen() {
             <View style={styles.statCard}>
               <Text style={styles.statNumber}>{alertasNoLeidas}</Text>
               <Text style={styles.statLabel}>No leídas</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={[styles.statNumber, { color: '#f97316' }]}>{totalAlertasAyuda}</Text>
+              <Text style={styles.statLabel}>Ayuda</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={[styles.statNumber, { color: '#ef4444' }]}>{totalCaidas}</Text>
@@ -474,16 +458,34 @@ export default function AlertasScreen() {
                     isExpanded={expandedAdultos.has(grupo.adulto_mayor_id)}
                     onToggle={() => toggleAdultoMayor(grupo.adulto_mayor_id)}
                     recordatoriosLeidos={recordatoriosLeidos}
+                    onRecordatorioPress={(rec) => {
+                      setSelectedRecordatorio(rec);
+                      setIsModalVisible(true);
+                    }}
+                  />
+                ))}
+              </View>
+            )}
+
+            {/* Sección de Alertas de Ayuda */}
+            {alertas.filter(a => a.type === 'ayuda').length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Solicitudes de Ayuda</Text>
+                {alertas.filter(a => a.type === 'ayuda').map((alerta) => (
+                  <AlertCard
+                    key={alerta.id}
+                    alert={alerta}
+                    onDismiss={handleDismiss}
                   />
                 ))}
               </View>
             )}
 
             {/* Sección de Alertas de Caída */}
-            {alertas.length > 0 && (
+            {alertas.filter(a => a.type === 'caida').length > 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Alertas de Caída</Text>
-                {alertas.map((alerta) => (
+                {alertas.filter(a => a.type === 'caida').map((alerta) => (
                   <AlertCard
                     key={alerta.id}
                     alert={alerta}
@@ -499,7 +501,7 @@ export default function AlertasScreen() {
                 <Bell size={64} color="#9ca3af" />
                 <Text style={styles.noAlerts}>No hay alertas registradas</Text>
                 <Text style={styles.noAlertsSubtext}>
-                  Las alertas de caídas, recordatorios y consejos aparecerán aquí
+                  Las alertas de ayuda, caídas y recordatorios aparecerán aquí
                 </Text>
               </View>
             )}
@@ -507,7 +509,142 @@ export default function AlertasScreen() {
         </>
       )}
 
-      <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+
+
+      {/* Modal de detalle del recordatorio */}
+      <Modal
+        visible={isModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setIsModalVisible(false)}
+        >
+          <Pressable
+            style={styles.modalContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {selectedRecordatorio && (
+              <>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Detalle del Recordatorio</Text>
+                  <Pressable onPress={() => setIsModalVisible(false)} style={styles.modalCloseButton}>
+                    <X size={24} color="#6b7280" />
+                  </Pressable>
+                </View>
+
+                <ScrollView style={styles.modalBody}>
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalLabel}>Título</Text>
+                    <Text style={styles.modalValue}>{selectedRecordatorio.titulo}</Text>
+                  </View>
+
+                  {selectedRecordatorio.descripcion && (
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalLabel}>Descripción</Text>
+                      <Text style={styles.modalValue}>{selectedRecordatorio.descripcion}</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalLabel}>Fecha y Hora</Text>
+                    <Text style={styles.modalValue}>
+                      {new Date(selectedRecordatorio.fecha_hora_programada).toLocaleString('es-ES', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </Text>
+                  </View>
+
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalLabel}>Tipo</Text>
+                    <Text style={styles.modalValue}>
+                      {selectedRecordatorio.tipo_recordatorio === 'medicamento' && '💊 Medicamento'}
+                      {selectedRecordatorio.tipo_recordatorio === 'cita_medica' && '🏥 Cita Médica'}
+                      {selectedRecordatorio.tipo_recordatorio === 'ejercicio' && '🏃 Ejercicio'}
+                      {selectedRecordatorio.tipo_recordatorio === 'hidratacion' && '💧 Hidratación'}
+                      {selectedRecordatorio.tipo_recordatorio === 'comida' && '🍽️ Comida'}
+                      {selectedRecordatorio.tipo_recordatorio === 'consejo_salud' && '💜 Consejo de Salud'}
+                      {selectedRecordatorio.tipo_recordatorio === 'otro' && '📌 Otro'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalLabel}>Frecuencia</Text>
+                    <Text style={styles.modalValue}>
+                      {selectedRecordatorio.frecuencia === 'una_vez' && 'Una vez'}
+                      {selectedRecordatorio.frecuencia === 'diario' && 'Diario'}
+                      {selectedRecordatorio.frecuencia === 'semanal' && 'Semanal'}
+                      {selectedRecordatorio.frecuencia === 'mensual' && 'Mensual'}
+                    </Text>
+                  </View>
+
+                  {selectedRecordatorio.dias_semana && selectedRecordatorio.dias_semana.length > 0 && (
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalLabel}>Días de la semana</Text>
+                      <Text style={styles.modalValue}>
+                        {selectedRecordatorio.dias_semana.map(dia => {
+                          const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+                          return dias[dia];
+                        }).join(', ')}
+                      </Text>
+                    </View>
+                  )}
+
+                  {selectedRecordatorio.nombre_adulto_mayor && (
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalLabel}>Para</Text>
+                      <View style={styles.modalPersonBadge}>
+                        <Heart size={16} color="#7c3aed" style={{ marginRight: 6 }} />
+                        <Text style={styles.modalPersonName}>{selectedRecordatorio.nombre_adulto_mayor}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalLabel}>Estado</Text>
+                    <View style={[
+                      styles.modalStatusBadge,
+                      selectedRecordatorio.estado === 'pendiente' && { backgroundColor: '#fef3c7' },
+                      selectedRecordatorio.estado === 'enviado' && { backgroundColor: '#dbeafe' },
+                      selectedRecordatorio.estado === 'confirmado' && { backgroundColor: '#d1fae5' },
+                      selectedRecordatorio.estado === 'omitido' && { backgroundColor: '#fee2e2' }
+                    ]}>
+                      <Text style={[
+                        styles.modalStatusText,
+                        selectedRecordatorio.estado === 'pendiente' && { color: '#92400e' },
+                        selectedRecordatorio.estado === 'enviado' && { color: '#1e40af' },
+                        selectedRecordatorio.estado === 'confirmado' && { color: '#065f46' },
+                        selectedRecordatorio.estado === 'omitido' && { color: '#991b1b' }
+                      ]}>
+                        {selectedRecordatorio.estado === 'pendiente' && 'Pendiente'}
+                        {selectedRecordatorio.estado === 'enviado' && 'Enviado'}
+                        {selectedRecordatorio.estado === 'confirmado' && 'Confirmado'}
+                        {selectedRecordatorio.estado === 'omitido' && 'Omitido'}
+                      </Text>
+                    </View>
+                  </View>
+                </ScrollView>
+
+                <View style={styles.modalFooter}>
+                  <Pressable
+                    style={styles.modalCloseButtonLarge}
+                    onPress={() => setIsModalVisible(false)}
+                  >
+                    <Text style={styles.modalCloseButtonText}>Cerrar</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -756,5 +893,104 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     fontWeight: '500',
+  },
+  // Estilos del Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalBody: {
+    maxHeight: 500,
+  },
+  modalSection: {
+    padding: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  modalValue: {
+    fontSize: 16,
+    color: '#111827',
+    lineHeight: 24,
+  },
+  modalPersonBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3e8ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  modalPersonName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#7c3aed',
+  },
+  modalStatusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  modalStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  modalCloseButtonLarge: {
+    backgroundColor: '#7c3aed',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCloseButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

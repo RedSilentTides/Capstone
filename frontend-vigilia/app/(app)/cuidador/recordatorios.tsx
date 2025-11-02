@@ -12,9 +12,9 @@ import DatePicker from 'react-native-ui-datepicker';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import { PlusCircle, Calendar, Clock, Repeat, Trash2, Edit2, X } from 'lucide-react-native';
-import { useAuth } from '../_layout';
-import CustomHeader from '../../components/CustomHeader';
-import SlidingPanel from '../../components/Slidingpanel';
+import { useAuth } from '../../../contexts/AuthContext';
+import CustomHeader from '../../../components/CustomHeader';
+
 
 // Configurar dayjs en español
 dayjs.locale('es');
@@ -70,7 +70,7 @@ const tipoRecordatorioOptions = [
 export default function RecordatoriosScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
-    const { setAuthState } = useAuth();
+    const { user } = useAuth();
 
     // Obtenemos los parámetros de la URL (pueden no existir si es un adulto mayor viendo sus propios recordatorios)
     const adultoMayorIdParam = params.adulto_mayor_id ? parseInt(params.adulto_mayor_id as string) : null;
@@ -84,7 +84,6 @@ export default function RecordatoriosScreen() {
     const [isEditing, setIsEditing] = useState(false);
     const [currentReminder, setCurrentReminder] = useState<Partial<ReminderFormData>>({});
     const [isSaving, setIsSaving] = useState(false);
-    const [isPanelOpen, setIsPanelOpen] = useState(false);
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [adultoMayorId, setAdultoMayorId] = useState<number | null>(adultoMayorIdParam);
     const [nombreAdultoMayor, setNombreAdultoMayor] = useState<string>(nombreParam);
@@ -97,38 +96,20 @@ export default function RecordatoriosScreen() {
     // Estado para días de la semana seleccionados (para frecuencia semanal)
     const [selectedDays, setSelectedDays] = useState<number[]>([]); // 0=Domingo, 1=Lunes, etc.
 
-    const getToken = useCallback(async (): Promise<string | null> => {
-        const tokenKey = 'userToken';
-        if (Platform.OS === 'web') {
-            return await AsyncStorage.getItem(tokenKey);
-        } else {
-            return await SecureStore.getItemAsync(tokenKey);
-        }
-    }, []);
-
     // Obtener perfil del usuario
     const fetchUserProfile = useCallback(async () => {
+        if (!user) return null;
         try {
-            const token = await getToken();
-            if (!token) {
-                setAuthState(false);
-                router.replace('/login');
-                return null;
-            }
-
+            const token = await user.getIdToken();
             const response = await axios.get<UserProfile>(`${API_URL}/usuarios/yo`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-
             setUserProfile(response.data);
 
-            // Si es adulto mayor y no se pasó un adulto_mayor_id, obtenerlo
             if (response.data.rol === 'adulto_mayor' && !adultoMayorIdParam) {
-                // Obtener el perfil propio del adulto mayor
                 const adultoResponse = await axios.get(`${API_URL}/adultos-mayores/mi-perfil`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-
                 if (adultoResponse.data) {
                     setAdultoMayorId(adultoResponse.data.id);
                     setNombreAdultoMayor(adultoResponse.data.nombre_completo || response.data.nombre);
@@ -136,61 +117,38 @@ export default function RecordatoriosScreen() {
                     setNombreAdultoMayor(response.data.nombre);
                 }
             }
-
             return response.data;
         } catch (err) {
             console.error('Error al obtener perfil:', err);
             return null;
         }
-    }, [getToken, router, setAuthState, adultoMayorIdParam]);
+    }, [user, adultoMayorIdParam]);
 
     const fetchRecordatorios = useCallback(async (isRefreshing = false) => {
+        if (!user) return;
         if (!isRefreshing) setIsLoading(true);
         setError(null);
 
         try {
-            const token = await getToken();
-            if (!token) {
-                setAuthState(false);
-                router.replace('/login');
-                return;
-            }
-
-            // Construir parámetros según si se filtró por adulto_mayor_id
+            const token = await user.getIdToken();
             const requestParams: any = {};
             if (adultoMayorId) {
                 requestParams.adulto_mayor_id = adultoMayorId;
-                console.log(`Obteniendo recordatorios para adulto_mayor_id: ${adultoMayorId}...`);
-            } else {
-                console.log('Obteniendo todos los recordatorios del usuario...');
             }
 
             const response = await axios.get<Recordatorio[]>(`${API_URL}/recordatorios`, {
                 headers: { Authorization: `Bearer ${token}` },
                 params: requestParams
             });
-
             setRecordatorios(response.data);
-            console.log(`Recordatorios obtenidos: ${response.data.length}`);
         } catch (err) {
             console.error('Error al obtener recordatorios:', err);
-            if (axios.isAxiosError(err)) {
-                if (err.response?.status === 401 || err.response?.status === 403) {
-                    setError('Tu sesión ha expirado.');
-                    setAuthState(false);
-                    setTimeout(() => router.replace('/login'), 1500);
-                } else {
-                    const message = err.response?.data?.detail || 'Error al obtener recordatorios.';
-                    setError(message);
-                }
-            } else {
-                setError('Error inesperado al obtener recordatorios.');
-            }
+            setError(axios.isAxiosError(err) ? err.response?.data?.detail || 'Error al obtener recordatorios.' : 'Error inesperado.');
         } finally {
             setIsLoading(false);
             setRefreshing(false);
         }
-    }, [getToken, router, adultoMayorId, setAuthState]);
+    }, [user, adultoMayorId]);
 
     useEffect(() => {
         const initialize = async () => {
@@ -212,46 +170,34 @@ export default function RecordatoriosScreen() {
 
     const validateDateTime = (dateTime: Date): string | null => {
         const now = new Date();
-
         if (dateTime < now) {
             return 'La fecha y hora del recordatorio no puede ser en el pasado.';
         }
-
         const oneYearFromNow = new Date();
         oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-
         if (dateTime > oneYearFromNow) {
             return 'La fecha no puede ser mayor a un año en el futuro.';
         }
-
         return null;
     };
 
     const handleAddOrUpdateReminder = async () => {
-        if (!currentReminder.titulo || !currentReminder.fecha_hora_programada) {
+        if (!user || !currentReminder.titulo || !currentReminder.fecha_hora_programada) {
             Alert.alert('Error', 'Completa el título y la fecha/hora.');
             return;
         }
-
         if (!adultoMayorId) {
             Alert.alert('Error', 'No se pudo determinar el adulto mayor.');
             return;
         }
 
-        // Validar fecha y hora
         const validationError = validateDateTime(currentReminder.fecha_hora_programada);
         if (validationError) {
             Alert.alert('Error de validación', validationError);
             return;
         }
 
-        const token = await getToken();
-        if (!token) {
-            setAuthState(false);
-            router.replace('/login');
-            return;
-        }
-
+        const token = await user.getIdToken();
         const dataToSend = {
             titulo: currentReminder.titulo.trim(),
             descripcion: currentReminder.descripcion?.trim() || null,
@@ -259,26 +205,16 @@ export default function RecordatoriosScreen() {
             fecha_hora_programada: currentReminder.fecha_hora_programada.toISOString(),
             frecuencia: currentReminder.frecuencia ?? 'una_vez',
             tipo_recordatorio: currentReminder.tipo_recordatorio ?? 'medicamento',
-            dias_semana: selectedDays.length > 0 ? selectedDays : null, // Solo enviar si hay días seleccionados
+            dias_semana: selectedDays.length > 0 ? selectedDays : null,
         };
 
-        console.log('📤 Datos a enviar:', JSON.stringify(dataToSend, null, 2));
         setIsSaving(true);
-
         try {
             if (isEditing && currentReminder.id) {
-                console.log('✏️ Actualizando recordatorio:', currentReminder.id);
-                const response = await axios.put(`${API_URL}/recordatorios/${currentReminder.id}`, dataToSend, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                console.log('✅ Respuesta actualización:', response.data);
+                await axios.put(`${API_URL}/recordatorios/${currentReminder.id}`, dataToSend, { headers: { Authorization: `Bearer ${token}` } });
                 Alert.alert('Éxito', 'Recordatorio actualizado.');
             } else {
-                console.log('➕ Creando nuevo recordatorio...');
-                const response = await axios.post(`${API_URL}/recordatorios`, dataToSend, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                console.log('✅ Respuesta creación:', response.data);
+                await axios.post(`${API_URL}/recordatorios`, dataToSend, { headers: { Authorization: `Bearer ${token}` } });
                 Alert.alert('Éxito', 'Recordatorio creado.');
             }
             setModalVisible(false);
@@ -293,12 +229,7 @@ export default function RecordatoriosScreen() {
     };
 
     const handleDeleteReminder = async (id: number) => {
-        const token = await getToken();
-        if (!token) {
-            setAuthState(false);
-            router.replace('/login');
-            return;
-        }
+        if (!user) return;
 
         Alert.alert(
             "Confirmar Eliminación",
@@ -308,10 +239,8 @@ export default function RecordatoriosScreen() {
                 {
                     text: "Eliminar", style: "destructive", onPress: async () => {
                         try {
-                            console.log('Eliminando recordatorio:', id);
-                            await axios.delete(`${API_URL}/recordatorios/${id}`, {
-                                headers: { Authorization: `Bearer ${token}` }
-                            });
+                            const token = await user.getIdToken();
+                            await axios.delete(`${API_URL}/recordatorios/${id}`, { headers: { Authorization: `Bearer ${token}` } });
                             Alert.alert('Éxito', 'Recordatorio eliminado.');
                             fetchRecordatorios();
                         } catch (err) {
@@ -446,8 +375,8 @@ export default function RecordatoriosScreen() {
     return (
         <View style={styles.container}>
             <CustomHeader
-                title="Recordatorios"
-                onMenuPress={() => setIsPanelOpen(true)}
+                title={headerTitle}
+                onMenuPress={() => router.push('/panel')}
                 showBackButton={true}
             />
 
@@ -815,8 +744,7 @@ export default function RecordatoriosScreen() {
                 </Modal>
             )}
 
-            {/* Panel lateral */}
-            <SlidingPanel isOpen={isPanelOpen} onClose={() => setIsPanelOpen(false)} />
+
         </View>
     );
 }
