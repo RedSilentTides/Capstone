@@ -8,8 +8,13 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
-
+*.sql
+*.mp4
 servicios/*.sql
+servicios/nanopi/*.txt
+servicios/nanopi/nanopi-key.json
+servicios/procesador-videos/old
+servicios/api-backend/main copy.py
 
 frontend-vigilia\.gitignore
 # Native

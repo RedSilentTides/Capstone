@@ -33,6 +33,18 @@ interface AlertItem {
   timestamp: Date; 
   read: boolean;
 }
+interface Recordatorio {
+    id: number;
+    adulto_mayor_id: number;
+    titulo: string;
+    descripcion?: string | null;
+    fecha_hora_programada: string;
+    frecuencia: 'una_vez' | 'diario' | 'semanal' | 'mensual';
+    estado: string;
+    tipo_recordatorio?: string;
+    fecha_creacion: string;
+}
+
 const alertConfig: Record<AlertType, { color: string }> = { 
   info: { color: '#3b82f6' },
   warning: { color: '#f59e0b' },
@@ -88,10 +100,17 @@ export default function IndexScreen() {
   const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
   const router = useRouter();
 
-  const [previewAlerts] = useState<AlertItem[]>([
-      { id: '1', type: 'error', title: 'Caída Detectada', message: 'Posible caída en Salón Principal', timestamp: new Date(Date.now() - 3600000), read: false },
-      { id: '2', type: 'info', title: 'Recordatorio', message: 'Tomar medicamento presión', timestamp: new Date(Date.now() - 7200000), read: true },
-  ]); 
+  const [recordatorios, setRecordatorios] = useState<Recordatorio[]>([]);
+
+  // Funciones para formatear fecha y hora
+  const formatFecha = (fecha: string) => {
+      const date = new Date(fecha);
+      return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
+  };
+  const formatHora = (fecha: string) => {
+      const date = new Date(fecha);
+      return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  };
   
   // Función para obtener el token (reutilizable)
   const getToken = useCallback(async (): Promise<string | null> => {
@@ -150,6 +169,21 @@ export default function IndexScreen() {
 
         // Obtener solicitudes pendientes para cualquier usuario
         fetchSolicitudesPendientes(token);
+        // --- OBTENER RECORDATORIOS ---
+        console.log('IndexScreen: Obteniendo recordatorios...');
+        const recordatoriosResponse = await axios.get(`${API_URL}/recordatorios`, {
+            headers: { Authorization: `Bearer ${token}` }
+            // No pasamos params, para que traiga todo lo que el rol puede ver
+        });
+
+        // Ordenar por fecha, más próximos primero
+        const sortedRecordatorios = (recordatoriosResponse.data as Recordatorio[]).sort(
+            (a, b) => new Date(a.fecha_hora_programada).getTime() - new Date(b.fecha_hora_programada).getTime()
+        );
+
+        setRecordatorios(sortedRecordatorios);
+        console.log(`IndexScreen: Recordatorios obtenidos: ${sortedRecordatorios.length}`);
+        // --- FIN DE OBTENER RECORDATORIOS ---
       } catch (fetchError) {
         console.error('IndexScreen: Error al obtener perfil:', fetchError);
         if (axios.isAxiosError(fetchError) && (fetchError.response?.status === 401 || fetchError.response?.status === 403)) {
@@ -309,13 +343,25 @@ export default function IndexScreen() {
             </Pressable>
 
 
-            <Text style={styles.sectionTitle}>Últimas Alertas</Text>
-            {previewAlerts.length > 0 ? (
+            <Text style={styles.sectionTitle}>Próximos Recordatorios (Todos)</Text>
+            {recordatorios.length > 0 ? (
                 <> 
-                  {previewAlerts.map((alert) => <AlertPreviewCard key={alert.id} alert={alert} />)}
+                  {recordatorios.slice(0, 3).map((rec) => ( // Mostrar los 3 más próximos
+                      <AlertPreviewCard 
+                          key={`rec-${rec.id}`} 
+                          alert={{
+                              id: `rec-${rec.id}`,
+                              type: 'info', // Todos los recordatorios son 'info'
+                              title: `Recordatorio: ${rec.titulo}`,
+                              message: rec.descripcion || 'Sin descripción',
+                              timestamp: new Date(rec.fecha_hora_programada),
+                              read: rec.estado !== 'pendiente'
+                          }} 
+                      />
+                  ))}
                 </>
             ) : (
-                <Text style={styles.noAlerts}>No hay alertas recientes.</Text>
+                <Text style={styles.noAlerts}>No hay recordatorios próximos.</Text>
             )}
             <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/alertas')}>
                <Bell size={16} color="#374151" style={{ marginRight: 8 }} />
@@ -350,9 +396,19 @@ export default function IndexScreen() {
               </Pressable>
             )}
 
-            <Text style={styles.sectionTitle}>Mis Recordatorios de Hoy</Text>
+            <Text style={styles.sectionTitle}>Mis Próximos Recordatorios</Text>
 
-            <Text style={styles.placeholderText}>[Lista de recordatorios del día]</Text>
+            {recordatorios.length > 0 ? (
+                recordatorios.slice(0, 5).map(rec => ( // Mostrar solo los 5 más próximos
+                    <View key={rec.id} style={styles.simpleCard}>
+                        <Text style={styles.simpleCardTitle}>{rec.titulo}</Text>
+                        {rec.descripcion ? <Text style={styles.simpleCardText}>{rec.descripcion}</Text> : null}
+                        <Text style={styles.simpleCardDate}>{formatFecha(rec.fecha_hora_programada)} - {formatHora(rec.fecha_hora_programada)}</Text>
+                    </View>
+                ))
+            ) : (
+                <Text style={styles.placeholderText}>No tienes recordatorios programados.</Text>
+            )}
 
             <Pressable style={[styles.actionButton, styles.panicButton]} onPress={() => alert('¡Ayuda solicitada!')}>
               <Text style={styles.buttonText}>BOTÓN DE AYUDA</Text>
@@ -472,4 +528,32 @@ const styles = StyleSheet.create({
   cardTitle: { fontWeight: '600', fontSize: 15, marginBottom: 2, color: '#1f2937'},
   cardMessage: { fontSize: 13, color: '#4b5563' },
   cardTimestamp: { fontSize: 12, color: '#9ca3af', marginLeft: 10 },
+  // --- AÑADIR ESTILOS FALTANTES AQUÍ ---
+  simpleCard: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  simpleCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  simpleCardText: {
+    fontSize: 14,
+    color: '#4b5563',
+    marginBottom: 8,
+  },
+  simpleCardDate: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#7c3aed', // Morado para destacar la fecha
+  },
 });

@@ -6,3 +6,11 @@ uvicorn
 google-cloud-storage
 pydantic
 google-cloud-pubsub
+
+# Procesamiento de video y ML
+opencv-python
+cvzone
+ultralytics
+
+# Peticiones HTTP
+requests
