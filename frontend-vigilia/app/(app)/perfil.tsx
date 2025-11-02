@@ -6,7 +6,6 @@ import axios from 'axios';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, deleteUser } from 'firebase/auth';
 import { auth as firebaseAuthInstance } from '../../firebaseConfig';
 import { useAuth } from '../../contexts/AuthContext';
-import CustomHeader from '../../components/CustomHeader';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -194,11 +193,6 @@ export default function ProfileScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <CustomHeader
-        title="Mi Perfil"
-        onMenuPress={() => router.push('/panel')}
-        showBackButton={true}
-      />
       <ScrollView style={styles.container}>
         <Pressable
           style={styles.editProfileButton}

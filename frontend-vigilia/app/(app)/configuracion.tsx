@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Switch, TextInput, Button, Alert, ActivityIndicator, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-import { useAuth } from '../../contexts/AuthContext';
-import CustomHeader from '../../components/CustomHeader'; 
+import { useAuth } from '../../contexts/AuthContext'; 
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -195,11 +194,6 @@ export default function ConfiguracionScreen() {
   // Formulario de configuración
   return (
     <View style={{ flex: 1 }}>
-      <CustomHeader
-        title="Configuración"
-        onMenuPress={() => router.push('/panel')}
-        showBackButton={true}
-      />
       <ScrollView style={styles.container}>
         <Text style={styles.title}>Preferencias de Notificación</Text>
       

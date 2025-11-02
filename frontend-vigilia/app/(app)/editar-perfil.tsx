@@ -6,7 +6,6 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
-import CustomHeader from '../../components/CustomHeader';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -160,12 +159,6 @@ export default function EditarPerfilScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <CustomHeader
-        title="Editar Perfil"
-        onMenuPress={() => router.push('/panel')}
-        showBackButton={true}
-      />
-
       <ScrollView style={styles.container}>
         {/* Información de solo lectura */}
         <View style={styles.infoSection}>

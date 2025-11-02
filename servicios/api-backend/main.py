@@ -644,42 +644,74 @@ def get_eventos_caida(
     limit: int = 50,
     current_user: dict = Depends(get_current_user)
 ):
-    user_info = read_users_me(current_user) 
+    user_info = read_users_me(current_user)
 
-    if user_info.rol not in ['cuidador', 'administrador']:
+    if user_info.rol not in ['cuidador', 'administrador', 'adulto_mayor']:
         print(f"Acceso denegado a /eventos-caida para usuario {user_info.firebase_uid} con rol {user_info.rol}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no permitido para este rol.")
 
-    print(f"Obteniendo eventos de caída para cuidador_id: {user_info.id} (skip={skip}, limit={limit})")
+    print(f"Obteniendo eventos de caída para usuario_id: {user_info.id} (rol: {user_info.rol}, skip={skip}, limit={limit})")
     try:
         with engine.connect() as db_conn:
-            query = text("""
-                SELECT
-                    a.id,
-                    a.adulto_mayor_id,
-                    a.dispositivo_id,
-                    a.timestamp_alerta,
-                    a.url_video_almacenado,
-                    a.confirmado_por_cuidador,
-                    a.notas,
-                    a.detalles_adicionales,
-                    d.nombre_dispositivo,
-                    am.nombre_completo as nombre_adulto_mayor
-                FROM alertas a
-                JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
-                LEFT JOIN dispositivos d ON a.dispositivo_id = d.id
-                JOIN cuidadores_adultos_mayores cam ON am.id = cam.adulto_mayor_id
-                WHERE cam.usuario_id = :cuidador_id
-                    AND a.tipo_alerta = 'caida'
-                ORDER BY a.timestamp_alerta DESC
-                LIMIT :limit OFFSET :offset
-            """)
+            # Diferentes queries según el rol del usuario
+            if user_info.rol == 'adulto_mayor':
+                # Para adultos mayores: solo sus propios eventos de caída
+                query = text("""
+                    SELECT
+                        a.id,
+                        a.adulto_mayor_id,
+                        a.dispositivo_id,
+                        a.timestamp_alerta,
+                        a.url_video_almacenado,
+                        a.confirmado_por_cuidador,
+                        a.notas,
+                        a.detalles_adicionales,
+                        d.nombre_dispositivo,
+                        am.nombre_completo as nombre_adulto_mayor
+                    FROM alertas a
+                    JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                    LEFT JOIN dispositivos d ON a.dispositivo_id = d.id
+                    WHERE am.usuario_id = :usuario_id
+                        AND a.tipo_alerta = 'caida'
+                    ORDER BY a.timestamp_alerta DESC
+                    LIMIT :limit OFFSET :offset
+                """)
 
-            results = db_conn.execute(query, {
-                "cuidador_id": user_info.id,
-                "limit": limit,
-                "offset": skip
-            }).fetchall()
+                results = db_conn.execute(query, {
+                    "usuario_id": user_info.id,
+                    "limit": limit,
+                    "offset": skip
+                }).fetchall()
+
+            else:
+                # Para cuidadores y administradores: eventos de sus adultos mayores a cargo
+                query = text("""
+                    SELECT
+                        a.id,
+                        a.adulto_mayor_id,
+                        a.dispositivo_id,
+                        a.timestamp_alerta,
+                        a.url_video_almacenado,
+                        a.confirmado_por_cuidador,
+                        a.notas,
+                        a.detalles_adicionales,
+                        d.nombre_dispositivo,
+                        am.nombre_completo as nombre_adulto_mayor
+                    FROM alertas a
+                    JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                    LEFT JOIN dispositivos d ON a.dispositivo_id = d.id
+                    JOIN cuidadores_adultos_mayores cam ON am.id = cam.adulto_mayor_id
+                    WHERE cam.usuario_id = :cuidador_id
+                        AND a.tipo_alerta = 'caida'
+                    ORDER BY a.timestamp_alerta DESC
+                    LIMIT :limit OFFSET :offset
+                """)
+
+                results = db_conn.execute(query, {
+                    "cuidador_id": user_info.id,
+                    "limit": limit,
+                    "offset": skip
+                }).fetchall()
 
             print(f"✅ Encontrados {len(results)} eventos de caída.")
             eventos = [dict(row._mapping) for row in results]

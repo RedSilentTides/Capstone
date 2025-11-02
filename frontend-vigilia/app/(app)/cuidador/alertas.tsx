@@ -199,10 +199,20 @@ function RecordatoriosAdultoMayorCard({ data, onToggle, isExpanded, recordatorio
   );
 }
 
+// Interfaz para perfil de usuario
+interface UserProfile {
+  id: number;
+  firebase_uid: string;
+  email: string;
+  nombre: string;
+  rol: 'cuidador' | 'adulto_mayor' | 'administrador';
+}
+
 // Pantalla Principal
 export default function AlertasScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [recordatoriosPorAdultoMayor, setRecordatoriosPorAdultoMayor] = useState<RecordatoriosPorAdultoMayor[]>([]);
   const [expandedAdultos, setExpandedAdultos] = useState<Set<number>>(new Set());
@@ -276,8 +286,26 @@ export default function AlertasScreen() {
     }));
   };
 
+  // Obtener perfil del usuario
+  const fetchUserProfile = useCallback(async () => {
+    if (!user) return null;
+    try {
+      const token = await user.getIdToken();
+      const response = await axios.get<UserProfile>(`${API_URL}/usuarios/yo`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUserProfile(response.data);
+      console.log('[ALERTAS] Perfil de usuario obtenido:', response.data.rol);
+      return response.data;
+    } catch (err) {
+      console.error('[ALERTAS] Error al obtener perfil:', err);
+      setError('No se pudo verificar tu perfil. Intenta de nuevo.');
+      return null;
+    }
+  }, [user]);
+
   const fetchAlertas = useCallback(async (isRefreshing = false) => {
-    if (!user) return;
+    if (!user || !userProfile) return;
     if (!isRefreshing) setIsLoading(true);
     setError(null);
 
@@ -285,17 +313,26 @@ export default function AlertasScreen() {
         const token = await user.getIdToken();
         const config = { headers: { Authorization: `Bearer ${token}` } };
 
-        const [resCaidas, resAlertasAyuda, resRecordatorios] = await Promise.all([
-            axios.get<EventoCaida[]>(`${API_URL}/eventos-caida`, config),
-            axios.get<AlertaAyuda[]>(`${API_URL}/alertas`, config),
-            axios.get<Recordatorio[]>(`${API_URL}/recordatorios`, config),
-        ]);
+        console.log('[ALERTAS] Obteniendo alertas para rol:', userProfile.rol);
 
-        const alertasCaidas = convertirEventosACaidas(resCaidas.data);
-        const alertasAyuda = convertirAlertasAyuda(resAlertasAyuda.data);
+        // Obtener todos los tipos de alertas (eventos de caída, alertas de ayuda y recordatorios)
+        const promises: [
+          Promise<EventoCaida[]>,
+          Promise<AlertaAyuda[]>,
+          Promise<Recordatorio[]>
+        ] = [
+          axios.get<EventoCaida[]>(`${API_URL}/eventos-caida`, config).then(res => res.data),
+          axios.get<AlertaAyuda[]>(`${API_URL}/alertas`, config).then(res => res.data),
+          axios.get<Recordatorio[]>(`${API_URL}/recordatorios`, config).then(res => res.data),
+        ];
+
+        const [caidasData, alertasAyudaData, recordatoriosData] = await Promise.all(promises);
+
+        const alertasCaidas = convertirEventosACaidas(caidasData);
+        const alertasAyuda = convertirAlertasAyuda(alertasAyudaData);
 
         const recordatoriosAgrupados: Record<number, RecordatoriosPorAdultoMayor> = {};
-        resRecordatorios.data.forEach((rec) => {
+        recordatoriosData.forEach((rec) => {
             if (!recordatoriosAgrupados[rec.adulto_mayor_id]) {
                 recordatoriosAgrupados[rec.adulto_mayor_id] = {
                     adulto_mayor_id: rec.adulto_mayor_id,
@@ -312,19 +349,37 @@ export default function AlertasScreen() {
         }));
 
         setRecordatoriosPorAdultoMayor(recordatoriosArray);
-        limpiarRecordatoriosAntiguos(resRecordatorios.data);
+        limpiarRecordatoriosAntiguos(recordatoriosData);
 
         const todasAlertas = [...alertasCaidas, ...alertasAyuda].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
         setAlertas(todasAlertas);
 
+        console.log('[ALERTAS] Alertas cargadas exitosamente:', {
+          caidas: alertasCaidas.length,
+          ayuda: alertasAyuda.length,
+          recordatorios: recordatoriosData.length
+        });
+
     } catch (err) {
-        console.error('Error al obtener alertas:', err);
-        setError(axios.isAxiosError(err) ? err.response?.data?.detail || 'No se pudieron cargar las alertas.' : 'Error inesperado.');
+        console.error('[ALERTAS] Error al obtener alertas:', err);
+        if (axios.isAxiosError(err) && err.response?.status === 403) {
+          setError('Acceso no permitido para este rol.');
+        } else {
+          setError(axios.isAxiosError(err) ? err.response?.data?.detail || 'No se pudieron cargar las alertas.' : 'Error inesperado.');
+        }
     } finally {
         setIsLoading(false);
         setRefreshing(false);
     }
-  }, [user, limpiarRecordatoriosAntiguos]);
+  }, [user, userProfile, limpiarRecordatoriosAntiguos]);
+
+  // Cargar perfil de usuario al iniciar
+  useEffect(() => {
+    const initialize = async () => {
+      await fetchUserProfile();
+    };
+    initialize();
+  }, [fetchUserProfile]);
 
   // Cargar recordatorios leídos desde AsyncStorage al iniciar
   useEffect(() => {
@@ -335,10 +390,12 @@ export default function AlertasScreen() {
     inicializarRecordatoriosLeidos();
   }, [cargarRecordatoriosLeidos]);
 
-  // Cargar alertas al montar
+  // Cargar alertas al montar (solo después de obtener el perfil)
   useEffect(() => {
-    fetchAlertas();
-  }, [fetchAlertas]);
+    if (userProfile) {
+      fetchAlertas();
+    }
+  }, [userProfile, fetchAlertas]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -402,7 +459,7 @@ export default function AlertasScreen() {
   return (
     <View style={styles.container}>
       <CustomHeader
-        title="Historial de Notificaciones"
+        title={userProfile?.rol === 'adulto_mayor' ? 'Mis Notificaciones' : 'Historial de Notificaciones'}
         onMenuPress={() => router.push('/panel')}
         showBackButton={true}
       />
@@ -447,23 +504,68 @@ export default function AlertasScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
           >
-            {/* Sección de Recordatorios por Adulto Mayor */}
+            {/* Sección de Recordatorios */}
             {recordatoriosPorAdultoMayor.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Recordatorios por Persona</Text>
-                {recordatoriosPorAdultoMayor.map((grupo) => (
-                  <RecordatoriosAdultoMayorCard
-                    key={grupo.adulto_mayor_id}
-                    data={grupo}
-                    isExpanded={expandedAdultos.has(grupo.adulto_mayor_id)}
-                    onToggle={() => toggleAdultoMayor(grupo.adulto_mayor_id)}
-                    recordatoriosLeidos={recordatoriosLeidos}
-                    onRecordatorioPress={(rec) => {
-                      setSelectedRecordatorio(rec);
-                      setIsModalVisible(true);
-                    }}
-                  />
-                ))}
+                {userProfile?.rol === 'cuidador' ? (
+                  <>
+                    <Text style={styles.sectionTitle}>Recordatorios por Persona</Text>
+                    {recordatoriosPorAdultoMayor.map((grupo) => (
+                      <RecordatoriosAdultoMayorCard
+                        key={grupo.adulto_mayor_id}
+                        data={grupo}
+                        isExpanded={expandedAdultos.has(grupo.adulto_mayor_id)}
+                        onToggle={() => toggleAdultoMayor(grupo.adulto_mayor_id)}
+                        recordatoriosLeidos={recordatoriosLeidos}
+                        onRecordatorioPress={(rec) => {
+                          setSelectedRecordatorio(rec);
+                          setIsModalVisible(true);
+                        }}
+                      />
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.sectionTitle}>Mis Recordatorios</Text>
+                    <View style={styles.recordatoriosDirectList}>
+                      {recordatoriosPorAdultoMayor[0]?.recordatorios.map((rec) => {
+                        const tipoRecordatorioIcons: Record<string, string> = {
+                          medicamento: '💊',
+                          cita_medica: '🏥',
+                          ejercicio: '🏃',
+                          hidratacion: '💧',
+                          comida: '🍽️',
+                          consejo_salud: '💜',
+                          otro: '📌',
+                        };
+                        const icon = tipoRecordatorioIcons[rec.tipo_recordatorio || 'otro'] || '📌';
+                        const fecha = new Date(rec.fecha_hora_programada);
+                        const formattedDate = fecha.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+                        const formattedTime = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+                        return (
+                          <Pressable
+                            key={rec.id}
+                            style={styles.recordatorioItemDirect}
+                            onPress={() => {
+                              setSelectedRecordatorio(rec);
+                              setIsModalVisible(true);
+                            }}
+                          >
+                            <Text style={styles.recordatorioIconDirect}>{icon}</Text>
+                            <View style={styles.recordatorioContentDirect}>
+                              <Text style={styles.recordatorioTituloDirect}>{rec.titulo}</Text>
+                              {rec.descripcion && (
+                                <Text style={styles.recordatorioDescripcionDirect} numberOfLines={2}>{rec.descripcion}</Text>
+                              )}
+                              <Text style={styles.recordatorioFechaDirect}>{formattedDate} • {formattedTime}</Text>
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
               </View>
             )}
 
@@ -891,6 +993,48 @@ const styles = StyleSheet.create({
   },
   recordatorioFecha: {
     fontSize: 12,
+    color: '#9ca3af',
+    fontWeight: '500',
+  },
+  // Estilos para vista directa de recordatorios (adultos mayores)
+  recordatoriosDirectList: {
+    gap: 12,
+  },
+  recordatorioItemDirect: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 16,
+    backgroundColor: 'white',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#7c3aed',
+  },
+  recordatorioIconDirect: {
+    fontSize: 32,
+    marginRight: 16,
+  },
+  recordatorioContentDirect: {
+    flex: 1,
+  },
+  recordatorioTituloDirect: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  recordatorioDescripcionDirect: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  recordatorioFechaDirect: {
+    fontSize: 13,
     color: '#9ca3af',
     fontWeight: '500',
   },

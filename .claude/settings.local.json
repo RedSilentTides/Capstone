@@ -4,7 +4,9 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(tree:*)",
-      "Bash(\"frontend-vigilia/app/(app)/cuidador/seleccionar-adulto-recordatorios.tsx\")"
+      "Bash(\"frontend-vigilia/app/(app)/cuidador/seleccionar-adulto-recordatorios.tsx\")",
+      "Bash(nul)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

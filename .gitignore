@@ -15,7 +15,7 @@ servicios/nanopi/*.txt
 servicios/nanopi/nanopi-key.json
 servicios/procesador-videos/old
 servicios/api-backend/main copy.py
-
+servicios/api-email
 frontend-vigilia\.gitignore
 # Native
 .kotlin/

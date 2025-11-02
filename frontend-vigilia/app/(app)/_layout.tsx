@@ -38,6 +38,12 @@ export default function AppLayout() {
           header: () => <CustomHeader title="Solicitudes" onMenuPress={() => router.push('/panel')} />,
         }}
       />
+      <Stack.Screen
+        name="editar-perfil"
+        options={{
+          header: () => <CustomHeader title="Editar Perfil" onMenuPress={() => router.push('/panel')} showBackButton={true} />,
+        }}
+      />
       <Stack.Screen name="cuidador" options={{ headerShown: false }} />
 
       {/* Pantalla del Panel, que ahora es una ruta normal dentro de este grupo */}

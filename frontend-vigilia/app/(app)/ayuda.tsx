@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { HelpCircle, ChevronDown, ChevronUp, Phone, Mail } from 'lucide-react-native';
-import CustomHeader from '../../components/CustomHeader'; 
+import { HelpCircle, ChevronDown, ChevronUp, Phone, Mail } from 'lucide-react-native'; 
 
 export default function HelpScreen() { // Renombrado para claridad
   const router = useRouter();
@@ -10,11 +9,6 @@ export default function HelpScreen() { // Renombrado para claridad
 
   return (
     <View style={{ flex: 1 }}>
-      <CustomHeader
-        title="Ayuda y Soporte"
-        onMenuPress={() => router.push('/panel')}
-        showBackButton={true}
-      />
       <ScrollView style={styles.container}>
 
       {/* Sección Centro de ayuda (Desplegable) */}

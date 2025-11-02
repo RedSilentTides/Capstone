@@ -7,7 +7,6 @@ import { useRouter } from 'expo-router';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, Heart } from 'lucide-react-native';
-import CustomHeader from '../../components/CustomHeader';
 
 // URL del backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -245,12 +244,6 @@ export default function IndexScreen() {
   if (isAuthenticated && userProfile) {
     return (
       <View style={{ flex: 1 }}>
-        {/* Header con menú lateral */}
-        <CustomHeader
-          title="VigilIA"
-          onMenuPress={() => router.push('/panel')}
-          showBackButton={false}
-        />
 
         <ScrollView style={styles.container}>
           <Text style={styles.welcome}>¡Bienvenido, {userProfile.nombre}!</Text>

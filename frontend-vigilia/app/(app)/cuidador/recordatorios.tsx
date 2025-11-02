@@ -158,10 +158,18 @@ export default function RecordatoriosScreen() {
     }, [fetchUserProfile]);
 
     useEffect(() => {
+        // Si es cuidador y no tiene adultoMayorId, redirigir a selección
+        if (userProfile && userProfile.rol === 'cuidador' && !adultoMayorId) {
+            console.log('Cuidador sin adulto mayor seleccionado, redirigiendo...');
+            router.replace('/cuidador/seleccionar-adulto-recordatorios');
+            return;
+        }
+
+        // Si ya tiene adultoMayorId o es adulto_mayor, cargar recordatorios
         if (adultoMayorId !== null || userProfile?.rol === 'adulto_mayor') {
             fetchRecordatorios();
         }
-    }, [adultoMayorId, userProfile, fetchRecordatorios]);
+    }, [adultoMayorId, userProfile, fetchRecordatorios, router]);
 
     const handleRefresh = () => {
         setRefreshing(true);
