@@ -43,6 +43,7 @@ interface Recordatorio {
     estado: string;
     tipo_recordatorio?: string;
     fecha_creacion: string;
+    nombre_adulto_mayor?: string | null;
 }
 
 const alertConfig: Record<AlertType, { color: string }> = { 
@@ -345,18 +346,20 @@ export default function IndexScreen() {
 
             <Text style={styles.sectionTitle}>Próximos Recordatorios (Todos)</Text>
             {recordatorios.length > 0 ? (
-                <> 
+                <>
                   {recordatorios.slice(0, 3).map((rec) => ( // Mostrar los 3 más próximos
-                      <AlertPreviewCard 
-                          key={`rec-${rec.id}`} 
+                      <AlertPreviewCard
+                          key={`rec-${rec.id}`}
                           alert={{
                               id: `rec-${rec.id}`,
                               type: 'info', // Todos los recordatorios son 'info'
                               title: `Recordatorio: ${rec.titulo}`,
-                              message: rec.descripcion || 'Sin descripción',
+                              message: rec.nombre_adulto_mayor
+                                  ? `${rec.nombre_adulto_mayor} - ${rec.descripcion || 'Sin descripción'}`
+                                  : rec.descripcion || 'Sin descripción',
                               timestamp: new Date(rec.fecha_hora_programada),
                               read: rec.estado !== 'pendiente'
-                          }} 
+                          }}
                       />
                   ))}
                 </>

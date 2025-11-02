@@ -206,6 +206,7 @@ class RecordatorioInfo(BaseModel):
     tipo_recordatorio: str | None = 'medicamento'
     dias_semana: list[int] | None = None
     fecha_creacion: datetime
+    nombre_adulto_mayor: str | None = None
 
 # --- INICIO: NUEVO MODELO PARA EL ENDPOINT DE CAÍDAS ---
 class CaidaDetectada(BaseModel):
@@ -813,8 +814,9 @@ def get_recordatorios(
     try:
         with engine.connect() as db_conn:
             select_clause = """
-                SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.tipo_recordatorio, r.dias_semana, r.fecha_creacion
-                FROM recordatorios r """
+                SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.tipo_recordatorio, r.dias_semana, r.fecha_creacion, am.nombre_completo as nombre_adulto_mayor
+                FROM recordatorios r
+                LEFT JOIN adultos_mayores am ON r.adulto_mayor_id = am.id """
             where_clauses = []
             params = {"limit": limit, "offset": skip}
 
