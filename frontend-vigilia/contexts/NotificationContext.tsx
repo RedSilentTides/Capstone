@@ -44,6 +44,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
+  const lastAlertIdRef = useRef<number | null>(null);
 
   // Cargar lastAlertId desde AsyncStorage al montar
   useEffect(() => {
@@ -53,6 +54,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         if (stored) {
           const id = parseInt(stored, 10);
           setLastAlertId(id);
+          lastAlertIdRef.current = id;
           console.log('📱 LastAlertId cargado desde AsyncStorage:', id);
         }
       } catch (e) {
@@ -70,6 +72,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (!isAuthenticated) {
       AsyncStorage.removeItem('lastAlertId');
       setLastAlertId(null);
+      lastAlertIdRef.current = null;
       console.log('📱 LastAlertId limpiado por logout');
     }
   }, [isAuthenticated]);
@@ -205,8 +208,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const newAlertCount = alertas.filter((a: any) => !a.leido).length;
         setNewAlertsCount(newAlertCount);
 
+        // Usar la referencia en lugar del estado para verificación síncrona
+        const currentLastAlertId = lastAlertIdRef.current;
+
         // Si hay una nueva alerta (ID diferente al último conocido), mostrar notificación local
-        if (lastAlertId !== null && latestAlert.id > lastAlertId) {
+        if (currentLastAlertId !== null && latestAlert.id > currentLastAlertId) {
           console.log('🔔 Nueva alerta detectada!', latestAlert);
 
           // Mostrar notificación local
@@ -218,8 +224,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
 
         // Actualizar el último ID de alerta conocido y persistir
-        if (latestAlert.id > (lastAlertId || 0)) {
+        if (latestAlert.id > (currentLastAlertId || 0)) {
           setLastAlertId(latestAlert.id);
+          lastAlertIdRef.current = latestAlert.id;
           await AsyncStorage.setItem('lastAlertId', latestAlert.id.toString());
           console.log('📱 LastAlertId guardado en AsyncStorage:', latestAlert.id);
         }
