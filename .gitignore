@@ -17,6 +17,8 @@ servicios/procesador-videos/old
 servicios/api-backend/main copy.py
 servicios/api-email
 frontend-vigilia\.gitignore
+*.ps1
+
 # Native
 .kotlin/
 *.orig.*

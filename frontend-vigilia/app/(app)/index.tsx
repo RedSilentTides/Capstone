@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
-import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, Heart } from 'lucide-react-native';
+import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, Heart, CalendarCheck } from 'lucide-react-native';
 
 // URL del backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -39,6 +39,20 @@ interface Recordatorio {
     tipo_recordatorio?: string;
     dias_semana?: number[] | null;
     fecha_creacion: string;
+    nombre_adulto_mayor?: string | null;
+}
+
+interface Alerta {
+    id: number;
+    adulto_mayor_id: number;
+    tipo_alerta: 'ayuda' | 'caida';
+    timestamp_alerta: string;
+    dispositivo_id?: number | null;
+    url_video_almacenado?: string | null;
+    confirmado_por_cuidador?: boolean | null;
+    notas?: string | null;
+    detalles_adicionales?: any;
+    fecha_registro: string;
     nombre_adulto_mayor?: string | null;
 }
 
@@ -109,6 +123,8 @@ export default function IndexScreen() {
   const [selectedRecordatorio, setSelectedRecordatorio] = useState<Recordatorio | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isEnviandoAlerta, setIsEnviandoAlerta] = useState(false);
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
 
   // Funciones para formatear fecha y hora
   const formatFecha = (fecha: string) => {
@@ -142,10 +158,11 @@ export default function IndexScreen() {
         console.log('IndexScreen: Token OK, obteniendo todos los datos...');
         
         // Realizar todas las llamadas en paralelo
-        const [profileResponse, solicitudesResponse, recordatoriosResponse] = await Promise.all([
+        const [profileResponse, solicitudesResponse, recordatoriosResponse, alertasResponse] = await Promise.all([
           axios.get(`${API_URL}/usuarios/yo`, authHeader),
           axios.get(`${API_URL}/solicitudes-cuidado/recibidas`, authHeader),
-          axios.get(`${API_URL}/recordatorios`, authHeader)
+          axios.get(`${API_URL}/recordatorios`, authHeader),
+          axios.get(`${API_URL}/alertas`, authHeader)
         ]);
 
         // Procesar perfil
@@ -163,6 +180,17 @@ export default function IndexScreen() {
         setRecordatorios(sortedRecordatorios);
         console.log(`IndexScreen: Recordatorios obtenidos: ${sortedRecordatorios.length}`);
 
+        // Procesar alertas
+        const sortedAlertas = (alertasResponse.data as Alerta[]).sort(
+            (a, b) => new Date(b.timestamp_alerta).getTime() - new Date(a.timestamp_alerta).getTime()
+        );
+        setAlertas(sortedAlertas);
+
+        // Contar alertas no leídas (las que no han sido confirmadas por el cuidador)
+        const noLeidas = sortedAlertas.filter(a => a.confirmado_por_cuidador === null || a.confirmado_por_cuidador === false).length;
+        setAlertasNoLeidas(noLeidas);
+        console.log(`IndexScreen: Alertas obtenidas: ${sortedAlertas.length}, No leídas: ${noLeidas}`);
+
       } catch (fetchError) {
         console.error('IndexScreen: Error al obtener datos:', fetchError);
         setProfileError('No se pudo cargar tu información. Intenta iniciar sesión de nuevo.');
@@ -178,7 +206,7 @@ export default function IndexScreen() {
 
   // Función para enviar alerta de ayuda
   const enviarAlertaAyuda = useCallback(async () => {
-    if (isEnviandoAlerta || !user) return;
+    if (isEnviandoAlerta || !user || !userProfile) return;
 
     setIsEnviandoAlerta(true);
 
@@ -186,11 +214,23 @@ export default function IndexScreen() {
       const token = await user.getIdToken();
       const authHeader = { headers: { Authorization: `Bearer ${token}` } };
 
-      const perfilResponse = await axios.get(`${API_URL}/usuarios/yo`, authHeader);
-      const adultoMayorId = perfilResponse.data.adulto_mayor_id;
+      // Si el usuario es adulto mayor, necesitamos obtener su adulto_mayor_id de la tabla adultos_mayores
+      let adultoMayorId: number;
 
-      if (!adultoMayorId) {
-        throw new Error('No se encontró tu perfil de adulto mayor.');
+      if (userProfile.rol === 'adulto_mayor') {
+        // Obtener el perfil de adulto mayor desde el endpoint específico
+        const perfilAdultoResponse = await axios.get(`${API_URL}/adultos-mayores/mi-perfil`, authHeader);
+        adultoMayorId = perfilAdultoResponse.data.id;
+        console.log(`Adulto mayor ID obtenido: ${adultoMayorId}`);
+      } else if (userProfile.rol === 'cuidador') {
+        // Los cuidadores podrían tener un adulto_mayor_id asociado si están vinculados a uno específico
+        const adultoMayorIdFromProfile = (userProfile as any).adulto_mayor_id;
+        if (!adultoMayorIdFromProfile) {
+          throw new Error('No tienes un adulto mayor asociado para enviar alertas.');
+        }
+        adultoMayorId = adultoMayorIdFromProfile;
+      } else {
+        throw new Error('Solo los adultos mayores pueden enviar alertas de ayuda.');
       }
 
       await axios.post(`${API_URL}/alertas`, { adulto_mayor_id: adultoMayorId, tipo_alerta: 'ayuda' }, authHeader);
@@ -201,12 +241,12 @@ export default function IndexScreen() {
       console.error('Error al enviar alerta de ayuda:', error);
       const errorMessage = axios.isAxiosError(error)
         ? error.response?.data?.detail || 'Error al enviar alerta de ayuda'
-        : 'Error inesperado al enviar alerta';
+        : (error instanceof Error ? error.message : 'Error inesperado al enviar alerta');
       alert(`Error: ${errorMessage}`);
     } finally {
       setIsEnviandoAlerta(false);
     }
-  }, [user, isEnviandoAlerta]);
+  }, [user, userProfile, isEnviandoAlerta]);
 
 
   // --- Renderizado ---
@@ -290,11 +330,50 @@ export default function IndexScreen() {
               <Text style={styles.buttonText}>Gestionar Recordatorios</Text>
             </Pressable>
 
+            {/* Sección de Alertas Recientes */}
+            <View style={styles.alertsSection}>
+              <View style={styles.sectionTitleRow}>
+                <Text style={styles.sectionTitle}>Alertas Recientes</Text>
+                {alertasNoLeidas > 0 && (
+                  <View style={styles.alertBadge}>
+                    <Text style={styles.alertBadgeText}>{alertasNoLeidas}</Text>
+                  </View>
+                )}
+              </View>
+
+              <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/alertas')}>
+                 <Bell size={16} color="#374151" style={{ marginRight: 8 }} />
+                 <Text style={[styles.buttonText, {color: '#374151'}]}>Ver Historial Completo</Text>
+              </Pressable>
+
+              {alertas.length > 0 ? (
+                  <>
+                    {alertas.slice(0, 3).map((alerta) => ( // Mostrar las 3 más recientes
+                        <AlertPreviewCard
+                            key={`alert-${alerta.id}`}
+                            alert={{
+                                id: `alert-${alerta.id}`,
+                                type: alerta.tipo_alerta === 'ayuda' ? 'warning' : 'error',
+                                title: alerta.tipo_alerta === 'ayuda' ? '¡Solicitud de Ayuda!' : '⚠️ Alerta de Caída',
+                                message: alerta.nombre_adulto_mayor
+                                    ? `${alerta.nombre_adulto_mayor}${alerta.notas ? ' - ' + alerta.notas : ''}`
+                                    : alerta.notas || 'Sin descripción',
+                                timestamp: new Date(alerta.timestamp_alerta),
+                                read: alerta.confirmado_por_cuidador !== null
+                            }}
+                        />
+                    ))}
+                  </>
+              ) : (
+                  <Text style={styles.noAlerts}>No hay alertas recientes.</Text>
+              )}
+            </View>
+
             <Text style={styles.sectionTitle}>Próximos Recordatorios (Todos)</Text>
 
-            <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/alertas')}>
-               <Bell size={16} color="#374151" style={{ marginRight: 8 }} />
-               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver Historial Completo</Text>
+            <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/recordatorios')}>
+               <CalendarCheck size={16} color="#374151" style={{ marginRight: 8 }} />
+               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver Todos los Recordatorios</Text>
             </Pressable>
 
             {recordatorios.length > 0 ? (
@@ -727,5 +806,28 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  alertsSection: {
+    marginTop: 10,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  alertBadge: {
+    backgroundColor: '#ef4444',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });

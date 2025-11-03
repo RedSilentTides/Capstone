@@ -6,11 +6,12 @@ import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight, LogOu
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // El componente ya no necesita props para abrir/cerrar
 export default function SlidingPanel() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const handleLogout = () => {
     const performLogout = async () => {
@@ -46,8 +47,8 @@ export default function SlidingPanel() {
       <Pressable style={styles.overlay} onPress={() => router.back()} />
 
       {/* Contenido del Panel */}
-      <SafeAreaView style={styles.slidingPanel} edges={['top', 'bottom']}>
-        <View style={styles.panelHeader}>
+      <View style={styles.slidingPanel}>
+        <View style={[styles.panelHeader, { paddingTop: insets.top + 16 }]}>
           <View style={styles.logoContainer}>
             <Image source={require('../assets/images/LogoVigilIa.png')} style={styles.logo} />
             <Text style={styles.appName}>VigilIA</Text>
@@ -57,7 +58,7 @@ export default function SlidingPanel() {
           </Pressable>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom }}>
           <MenuItem icon={<Home size={20} color="#374151" />} text="Inicio" onPress={() => navigate('/')} />
           <MenuItem icon={<User size={20} color="#374151" />} text="Mi Perfil" onPress={() => navigate('/perfil')} />
           <MenuItem icon={<Bell size={20} color="#374151" />} text="Alertas" onPress={() => navigate('/cuidador/alertas')} />
@@ -74,7 +75,7 @@ export default function SlidingPanel() {
             </View>
           </Pressable>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -95,12 +96,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)', // Un poco más sutil
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    zIndex: 1
   },
   slidingPanel: {
     width: 280,
     backgroundColor: '#fff',
+    zIndex: 2,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -120,7 +127,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },

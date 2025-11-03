@@ -1,4 +1,5 @@
 import os
+import requests
 from fastapi import FastAPI, HTTPException, Depends, status, Header
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr, constr, validator
@@ -95,6 +96,9 @@ class CurrentUserInfo(BaseModel):
 
 class UserUpdate(BaseModel):
     nombre: constr(min_length=1, max_length=100) | None = None
+
+class PushTokenUpdate(BaseModel):
+    push_token: str
 
 class AlertConfigUpdate(BaseModel):
     notificar_app: bool | None = None
@@ -285,8 +289,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 # --- INICIO: NUEVA DEPENDENCIA DE SEGURIDAD INTERNA ---
 # !! IMPORTANTE: Cambia esta clave por una cadena aleatoria y segura.
 # Esta clave la guardarás en Secret Manager para AMBOS servicios.
-INTERNAL_API_KEY_SECRET_NAME = "INTERNAL_API_KEY" # El nombre del secret en Secret Manager
-INTERNAL_API_KEY = os.environ.get(INTERNAL_API_KEY_SECRET_NAME, "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO")
+INTERNAL_API_KEY_SECRET_NAME = "internal-api-key" # El nombre del secret en Secret Manager
+INTERNAL_API_KEY = os.environ.get(INTERNAL_API_KEY_SECRET_NAME, "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO_TEST1")
 
 async def verify_internal_token(x_internal_token: str = Header(None)):
     """Verifica que la llamada provenga de otro servicio tuyo."""
@@ -334,6 +338,84 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 # --- FIN DE SEGURIDAD Y AUTENTICACIÓN ---
+
+# --- Helper Functions ---
+
+def enviar_push_notification(push_tokens: list[str], titulo: str, mensaje: str, data: dict | None = None):
+    """
+    Envía notificaciones push usando la API de Expo Push Notifications.
+
+    Args:
+        push_tokens: Lista de tokens de Expo Push Notifications
+        titulo: Título de la notificación
+        mensaje: Cuerpo del mensaje
+        data: Datos adicionales para la notificación (opcional)
+
+    Returns:
+        Diccionario con el resultado del envío
+    """
+    if not push_tokens:
+        print("⚠️  No hay tokens para enviar notificaciones")
+        return {"success": False, "message": "No hay tokens"}
+
+    # Filtrar tokens válidos (deben empezar con ExponentPushToken)
+    # Los tokens de desarrollo (DEV-TOKEN-*) se ignoran pero no generan error
+    tokens_validos = [token for token in push_tokens if token and token.startswith('ExponentPushToken')]
+    tokens_dev = [token for token in push_tokens if token and token.startswith('DEV-TOKEN-')]
+
+    if tokens_dev:
+        print(f"ℹ️  {len(tokens_dev)} tokens de desarrollo detectados (modo local)")
+        print("   Las notificaciones se mostrarán localmente en esos dispositivos")
+
+    if not tokens_validos:
+        if tokens_dev:
+            # Solo hay tokens de desarrollo, está bien
+            return {"success": True, "message": "Tokens de desarrollo (notificaciones locales)", "dev_mode": True}
+        print("⚠️  No hay tokens válidos de Expo")
+        return {"success": False, "message": "No hay tokens válidos"}
+
+    # Preparar mensajes para Expo
+    messages = []
+    for token in tokens_validos:
+        message = {
+            "to": token,
+            "sound": "default",
+            "title": titulo,
+            "body": mensaje,
+            "data": data or {},
+            "priority": "high",
+            "channelId": "default"
+        }
+        messages.append(message)
+
+    try:
+        # Enviar a la API de Expo Push Notifications
+        response = requests.post(
+            'https://exp.host/--/api/v2/push/send',
+            json=messages,
+            headers={
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            timeout=10
+        )
+
+        response.raise_for_status()
+        result = response.json()
+
+        print(f"✅ Notificaciones push enviadas: {len(messages)} mensajes")
+        print(f"   Resultado: {result}")
+
+        return {"success": True, "result": result, "sent_count": len(messages)}
+
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error al enviar notificaciones push: {str(e)}")
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        print(f"❌ Error inesperado al enviar notificaciones: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+# --- FIN Helper Functions ---
 
 # --- Endpoints de la API ---
 
@@ -557,6 +639,61 @@ def update_user_profile(update_data: UserUpdate, current_user: dict = Depends(ge
         raise http_exc
     except Exception as e:
         print(f"--- ERROR INESPERADO AL ACTUALIZAR USUARIO ---")
+        print(f"ERROR: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+@app.post("/usuarios/push-token", status_code=status.HTTP_200_OK)
+def register_push_token(token_data: PushTokenUpdate, current_user: dict = Depends(get_current_user)):
+    """
+    Registra o actualiza el token de push notification del usuario autenticado.
+    """
+    user_uid = current_user.get("uid")
+    if not user_uid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido, UID no encontrado.")
+
+    # Obtener información actual del usuario
+    user_info = read_users_me(current_user)
+
+    print(f"Registrando push token para usuario_id: {user_info.id} (firebase_uid: {user_uid})")
+
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            try:
+                # Actualizar push_token en la base de datos
+                query = text("""
+                    UPDATE usuarios
+                    SET push_token = :push_token
+                    WHERE id = :id AND firebase_uid = :uid
+                """)
+                result = db_conn.execute(query, {
+                    "push_token": token_data.push_token,
+                    "id": user_info.id,
+                    "uid": user_uid
+                })
+
+                if result.rowcount == 0:
+                    trans.rollback()
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
+
+                trans.commit()
+                print(f"✅ Push token registrado para usuario_id: {user_info.id}")
+
+                return {"message": "Push token registrado correctamente", "success": True}
+
+            except HTTPException as http_exc:
+                trans.rollback()
+                raise http_exc
+            except Exception as e_db:
+                print(f"--- ERROR AL REGISTRAR PUSH TOKEN (DB) ---")
+                print(f"ERROR: {str(e_db)}")
+                trans.rollback()
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD al registrar push token: {str(e_db)}")
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        print(f"--- ERROR INESPERADO AL REGISTRAR PUSH TOKEN ---")
         print(f"ERROR: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
 
@@ -1663,6 +1800,49 @@ def crear_alerta(
             nombre_adulto_mayor = nombre_result[0] if nombre_result else None
 
             print(f"✅ Alerta creada (tipo: {alerta_data.tipo_alerta}) para adulto mayor {alerta_data.adulto_mayor_id}")
+
+            # Enviar notificaciones push a los cuidadores asociados
+            try:
+                # Obtener los push tokens de los cuidadores asociados al adulto mayor
+                query_tokens = text("""
+                    SELECT u.push_token
+                    FROM usuarios u
+                    INNER JOIN cuidadores_adultos_mayores cam ON cam.usuario_id = u.id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                      AND u.push_token IS NOT NULL
+                      AND u.rol = 'cuidador'
+                """)
+                tokens_result = db_conn.execute(query_tokens, {"adulto_mayor_id": alerta_data.adulto_mayor_id}).fetchall()
+                push_tokens = [row[0] for row in tokens_result if row[0]]
+
+                if push_tokens:
+                    # Preparar el título y mensaje según el tipo de alerta
+                    if alerta_data.tipo_alerta == 'ayuda':
+                        titulo = "🚨 Solicitud de Ayuda"
+                        mensaje = f"{nombre_adulto_mayor or 'Un adulto mayor'} necesita ayuda"
+                    else:  # caida
+                        titulo = "⚠️ Alerta de Caída Detectada"
+                        mensaje = f"Posible caída detectada para {nombre_adulto_mayor or 'un adulto mayor'}"
+
+                    # Enviar las notificaciones
+                    enviar_push_notification(
+                        push_tokens=push_tokens,
+                        titulo=titulo,
+                        mensaje=mensaje,
+                        data={
+                            "tipo": "alerta",
+                            "alerta_id": result[0],  # ID de la alerta creada
+                            "tipo_alerta": alerta_data.tipo_alerta,
+                            "adulto_mayor_id": alerta_data.adulto_mayor_id
+                        }
+                    )
+                    print(f"📱 Notificaciones push enviadas a {len(push_tokens)} cuidadores")
+                else:
+                    print(f"⚠️  No hay cuidadores con push tokens configurados para adulto mayor {alerta_data.adulto_mayor_id}")
+
+            except Exception as notif_error:
+                # No fallar la creación de alerta si falla el envío de notificaciones
+                print(f"⚠️  Error al enviar notificaciones push (alerta creada exitosamente): {str(notif_error)}")
 
             return AlertaInfo(
                 **result._mapping,

@@ -1,7 +1,9 @@
 import React, { useEffect } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { NotificationProvider } from '../contexts/NotificationContext';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const InitialLayout = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -35,9 +37,13 @@ const InitialLayout = () => {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <InitialLayout />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <InitialLayout />
+        </NotificationProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 

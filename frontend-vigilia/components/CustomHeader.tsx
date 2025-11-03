@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Menu, ArrowLeft } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface CustomHeaderProps {
   title: string;
@@ -12,6 +13,7 @@ interface CustomHeaderProps {
 export default function CustomHeader({ title, onMenuPress, showBackButton = true }: CustomHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
 
   // Determinar si estamos en la página de inicio
   const isHomePage = pathname === '/' || pathname === '/index';
@@ -26,7 +28,7 @@ export default function CustomHeader({ title, onMenuPress, showBackButton = true
   };
 
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
       {/* Botón izquierdo: Siempre muestra el menú hamburguesa */}
       <View style={styles.leftSection}>
         <Pressable onPress={onMenuPress} style={styles.iconButton}>
@@ -57,7 +59,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#7c3aed', // Morado
-    paddingTop: 12,
     paddingBottom: 12,
     paddingHorizontal: 16,
     shadowColor: '#000',

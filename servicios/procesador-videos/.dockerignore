@@ -1,0 +1,43 @@
+# Archivos de prueba
+prueba_*.mp4
+fall.mp4
+test*.mp4
+
+# Directorio old
+old/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentación
+README*.md
+*.txt
+!requirements.txt
+!classes.txt
+
+# Scripts de setup
+setup-gcp-infrastructure.sh

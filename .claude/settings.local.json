@@ -6,7 +6,13 @@
       "Bash(tree:*)",
       "Bash(\"frontend-vigilia/app/(app)/cuidador/seleccionar-adulto-recordatorios.tsx\")",
       "Bash(nul)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(npx expo start:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c taskkill /PID 34248 /F)",
+      "Bash(cmd /c taskkill /PID 24328 /F)",
+      "Bash(timeout /t 5 /nobreak)"
     ],
     "deny": [],
     "ask": []

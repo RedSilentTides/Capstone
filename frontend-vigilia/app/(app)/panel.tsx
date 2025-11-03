@@ -6,10 +6,11 @@ import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight, LogOu
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function PanelScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const handleLogout = () => {
     const performLogout = async () => {
@@ -47,9 +48,12 @@ export default function PanelScreen() {
 
   return (
     <View style={styles.modalContainer}>
+      {/* Overlay para cerrar al tocar fuera */}
+      <Pressable style={styles.overlay} onPress={() => router.back()} />
+
       {/* Contenido del Panel a la izquierda */}
-      <SafeAreaView style={styles.slidingPanel} edges={['top', 'bottom']}>
-        <View style={styles.panelHeader}>
+      <View style={styles.slidingPanel}>
+        <View style={[styles.panelHeader, { paddingTop: insets.top + 16 }]}>
           <View style={styles.logoContainer}>
             <Image source={require('../../assets/images/LogoVigilIa.png')} style={styles.logo} />
             <Text style={styles.appName}>VigilIA</Text>
@@ -59,7 +63,7 @@ export default function PanelScreen() {
           </Pressable>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom }}>
           <MenuItem icon={<Home size={20} color="#374151" />} text="Inicio" onPress={() => navigate('/')} />
           <MenuItem icon={<User size={20} color="#374151" />} text="Mi Perfil" onPress={() => navigate('/perfil')} />
           <MenuItem icon={<Bell size={20} color="#374151" />} text="Alertas" onPress={() => navigate('/cuidador/alertas')} />
@@ -74,10 +78,7 @@ export default function PanelScreen() {
             </View>
           </Pressable>
         </ScrollView>
-      </SafeAreaView>
-
-      {/* Overlay para cerrar al tocar fuera */}
-      <Pressable style={styles.overlay} onPress={() => router.back()} />
+      </View>
     </View>
   );
 }
@@ -94,17 +95,26 @@ const MenuItem = ({ icon, text, onPress }: { icon: React.ReactNode; text: string
 
 const styles = StyleSheet.create({
   modalContainer: { flex: 1, flexDirection: 'row' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    zIndex: 1
+  },
   slidingPanel: {
     width: 280,
     backgroundColor: '#fff',
+    zIndex: 2,
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOpacity: 0.25, shadowOffset: { width: -4, height: 0 }, shadowRadius: 12 },
       android: { elevation: 20 },
       default: { boxShadow: '-4px 0px 12px rgba(0, 0, 0, 0.25)' }
     })
   },
-  panelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  panelHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
   logoContainer: { flexDirection: 'row', alignItems: 'center' },
   logo: { width: 40, height: 40, marginRight: 10 },
   appName: { fontSize: 20, fontWeight: 'bold', color: '#111827' },

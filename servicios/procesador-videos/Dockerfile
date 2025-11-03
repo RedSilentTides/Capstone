@@ -1,21 +1,40 @@
-# 1. Usa una imagen base de Python oficial
+# Usar una imagen base de Python con soporte para OpenCV
 FROM python:3.11-slim
 
-# 2. Establece el directorio de trabajo dentro del contenedor
+# Instalar dependencias del sistema necesarias para OpenCV y librerías multimedia
+RUN apt-get update && apt-get install -y \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Establecer directorio de trabajo
 WORKDIR /app
 
-# 3. Instala dependencias del sistema operativo para OpenCV
-RUN apt-get update && apt-get install -y libgl1 libglib2.0-0
-
-# 4. Copia el archivo de requerimientos y los instala
+# Copiar archivos de requirements
 COPY requirements.txt .
+
+# Instalar dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Copia el resto de tu código
-COPY . .
+# Copiar el código de la aplicación y archivos necesarios
+COPY main.py .
+COPY classes.txt .
+COPY yolov8s.pt .
 
-# 5. Expone el puerto en el que la aplicación se ejecutará
+# Pre-compilar el código Python
+RUN python -m compileall .
+
+# Exponer el puerto que usa Cloud Run
 EXPOSE 8080
 
-# 6. Define el comando para iniciar la aplicación cuando el contenedor se inicie
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Configurar variables de entorno por defecto
+ENV PORT=8080
+
+# Comando para ejecutar la aplicación
+# Cloud Run inyecta la variable $PORT automáticamente
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT}

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 # --- CONFIGURACIÓN ---
 PROJECT_ID = os.environ.get("GCP_PROJECT", "composed-apogee-475623-p6")
 BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "https://api-backend-wsqxyy54za-uc.a.run.app")
-INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO")
+INTERNAL_API_KEY = os.environ.get("internal-api-key", "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO_TEST2")
 
 app = FastAPI(title="Procesador de Video - VigilIA")
 
