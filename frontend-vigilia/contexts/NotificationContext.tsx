@@ -9,6 +9,7 @@ import {
   addNotificationResponseReceivedListener,
   scheduleLocalNotification,
 } from '../services/notificationService';
+import { getWebSocketService, resetWebSocketService, WebSocketMessage } from '../services/websocketService';
 import { useAuth } from './AuthContext';
 import axios from 'axios';
 
@@ -20,6 +21,7 @@ interface NotificationContextType {
   error: string | null;
   newAlertsCount: number;
   checkForNewAlerts: () => Promise<void>;
+  isWebSocketConnected: boolean;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -28,6 +30,7 @@ const NotificationContext = createContext<NotificationContextType>({
   error: null,
   newAlertsCount: 0,
   checkForNewAlerts: async () => {},
+  isWebSocketConnected: false,
 });
 
 export const useNotifications = () => useContext(NotificationContext);
@@ -39,6 +42,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [newAlertsCount, setNewAlertsCount] = useState(0);
   const [lastAlertId, setLastAlertId] = useState<number | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
   const notificationListener = useRef<Notifications.Subscription | null>(null);
@@ -103,6 +107,95 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     fetchUserRole();
   }, [isAuthenticated, user]);
+
+  // Conectar WebSocket para notificaciones en tiempo real (solo web NO móvil)
+  useEffect(() => {
+    // Solo usar WebSocket en web, en móvil usar push notifications
+    if (Platform.OS !== 'web') {
+      console.log('🌐 WebSocket solo disponible en web, en móvil se usa push/polling');
+      return;
+    }
+
+    if (!isAuthenticated || !user || userRole !== 'cuidador') {
+      // Desconectar si el usuario no está autenticado o no es cuidador
+      resetWebSocketService();
+      setIsWebSocketConnected(false);
+      return;
+    }
+
+    console.log('🌐 Inicializando conexión WebSocket...');
+    const wsService = getWebSocketService();
+
+    // Conectar WebSocket
+    wsService.connect(user)
+      .then(() => {
+        console.log('✅ WebSocket conectado en NotificationContext');
+        setIsWebSocketConnected(true);
+      })
+      .catch((error) => {
+        console.error('❌ Error al conectar WebSocket:', error);
+        setIsWebSocketConnected(false);
+      });
+
+    // Configurar handler para mensajes
+    const removeMessageHandler = wsService.onMessage((message: WebSocketMessage) => {
+      console.log('📨 Mensaje WebSocket en NotificationContext:', message.tipo);
+
+      if (message.tipo === 'nueva_alerta' && message.alerta) {
+        const alerta = message.alerta;
+
+        console.log('🔔 Nueva alerta recibida via WebSocket:', alerta);
+
+        // Actualizar lastAlertId
+        if (alerta.id > (lastAlertIdRef.current || 0)) {
+          setLastAlertId(alerta.id);
+          lastAlertIdRef.current = alerta.id;
+          AsyncStorage.setItem('lastAlertId', alerta.id.toString());
+        }
+
+        // Mostrar alerta visual en web
+        const mensaje = `${alerta.nombre_adulto_mayor} ha solicitado ayuda`;
+        console.log(`🚨 ALERTA: ${mensaje}`);
+
+        // En web, SIEMPRE mostrar alert() para garantizar que se vea
+        if (Platform.OS === 'web') {
+          alert(`🚨 ¡SOLICITUD DE AYUDA!\n\n${mensaje}\n\nAlerta ID: ${alerta.id}`);
+        }
+
+        // Adicionalmente, intentar notificación del navegador si está permitido
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification('¡Solicitud de Ayuda!', {
+              body: mensaje,
+              icon: '/icon.png',
+              badge: '/icon.png',
+              tag: `alerta-${alerta.id}`,
+              requireInteraction: true,
+            });
+          } catch (e) {
+            console.log('No se pudo mostrar notificación del navegador:', e);
+          }
+        }
+
+        // Actualizar contador de alertas
+        checkForNewAlerts();
+      }
+    });
+
+    // Configurar handler para cierre de conexión
+    const removeCloseHandler = wsService.onClose(() => {
+      console.log('🔌 WebSocket desconectado');
+      setIsWebSocketConnected(false);
+    });
+
+    // Cleanup al desmontar
+    return () => {
+      removeMessageHandler();
+      removeCloseHandler();
+      resetWebSocketService();
+      setIsWebSocketConnected(false);
+    };
+  }, [isAuthenticated, user, userRole]);
 
   // Registrar el dispositivo para notificaciones cuando el usuario esté autenticado
   useEffect(() => {
@@ -247,8 +340,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       // Verificar inmediatamente
       checkForNewAlerts();
 
-      // Configurar polling cada 10 segundos
-      pollingInterval.current = setInterval(checkForNewAlerts, 10000);
+      // Configurar polling cada 5 segundos (más rápido para alertas)
+      pollingInterval.current = setInterval(checkForNewAlerts, 5000);
     }
 
     return () => {
@@ -265,7 +358,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       notification,
       error,
       newAlertsCount,
-      checkForNewAlerts
+      checkForNewAlerts,
+      isWebSocketConnected
     }}>
       {children}
     </NotificationContext.Provider>

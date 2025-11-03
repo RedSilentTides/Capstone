@@ -1844,6 +1844,45 @@ def crear_alerta(
                 # No fallar la creación de alerta si falla el envío de notificaciones
                 print(f"⚠️  Error al enviar notificaciones push (alerta creada exitosamente): {str(notif_error)}")
 
+            # Notificar via WebSocket a cuidadores conectados en tiempo real
+            try:
+                websocket_url = os.environ.get("WEBSOCKET_SERVICE_URL", "https://alertas-websocket-687053793381.southamerica-west1.run.app")
+                internal_key = os.environ.get("INTERNAL_API_KEY", "")
+
+                alerta_dict = {
+                    "id": result[0],
+                    "adulto_mayor_id": result[1],
+                    "tipo_alerta": result[2],
+                    "timestamp_alerta": result[3].isoformat() if result[3] else None,
+                    "dispositivo_id": result[4],
+                    "url_video_almacenado": result[5],
+                    "confirmado_por_cuidador": result[6],
+                    "notas": result[7],
+                    "detalles_adicionales": result[8],
+                    "fecha_registro": result[9].isoformat() if result[9] else None,
+                    "nombre_adulto_mayor": nombre_adulto_mayor
+                }
+
+                response = requests.post(
+                    f"{websocket_url}/internal/notify-alert",
+                    json=alerta_dict,
+                    headers={"X-Internal-Key": internal_key},
+                    timeout=5
+                )
+
+                if response.status_code == 200:
+                    result_data = response.json()
+                    print(f"🌐 Notificación WebSocket enviada: {result_data.get('notified_count', 0)} cuidadores conectados")
+                else:
+                    print(f"⚠️  WebSocket service respondió con código {response.status_code}")
+
+            except requests.exceptions.Timeout:
+                print(f"⚠️  Timeout al contactar servicio WebSocket (alerta creada exitosamente)")
+            except requests.exceptions.RequestException as ws_error:
+                print(f"⚠️  Error al notificar via WebSocket (alerta creada exitosamente): {str(ws_error)}")
+            except Exception as ws_error:
+                print(f"⚠️  Error inesperado al notificar via WebSocket: {str(ws_error)}")
+
             return AlertaInfo(
                 **result._mapping,
                 nombre_adulto_mayor=nombre_adulto_mayor
