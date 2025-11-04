@@ -331,10 +331,9 @@ async def notify_alert(
             result = conn.execute(
                 text("""
                     SELECT u.firebase_uid, u.nombre
-                    FROM relaciones_cuidador r
-                    JOIN usuarios u ON r.cuidador_id = u.id
-                    WHERE r.adulto_mayor_id = :adulto_mayor_id
-                    AND r.estado = 'aceptada'
+                    FROM cuidadores_adultos_mayores cam
+                    JOIN usuarios u ON cam.usuario_id = u.id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
                 """),
                 {"adulto_mayor_id": adulto_mayor_id}
             )

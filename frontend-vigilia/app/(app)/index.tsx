@@ -204,6 +204,37 @@ export default function IndexScreen() {
     fetchAllData();
   }, [user, isAuthenticated]);
 
+  // Escuchar eventos de nuevas alertas via WebSocket para actualizar la lista automáticamente
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !user || !isAuthenticated) {
+      return;
+    }
+
+    const handleNuevaAlerta = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const alerta = customEvent.detail;
+      console.log('🔄 Evento nueva-alerta recibido en index.tsx, actualizando lista...');
+
+      // Agregar la nueva alerta al principio de la lista
+      setAlertas((prevAlertas) => {
+        const alertaYaExiste = prevAlertas.some((a) => a.id === alerta.id);
+        if (alertaYaExiste) {
+          return prevAlertas; // No duplicar
+        }
+        return [alerta, ...prevAlertas];
+      });
+
+      // Actualizar el contador de alertas no leídas
+      setAlertasNoLeidas((prev) => prev + 1);
+    };
+
+    window.addEventListener('nueva-alerta', handleNuevaAlerta);
+
+    return () => {
+      window.removeEventListener('nueva-alerta', handleNuevaAlerta);
+    };
+  }, [user, isAuthenticated]);
+
   // Función para enviar alerta de ayuda
   const enviarAlertaAyuda = useCallback(async () => {
     if (isEnviandoAlerta || !user || !userProfile) return;

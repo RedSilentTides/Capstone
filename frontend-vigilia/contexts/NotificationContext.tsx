@@ -138,7 +138,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       });
 
     // Configurar handler para mensajes
-    const removeMessageHandler = wsService.onMessage((message: WebSocketMessage) => {
+    const removeMessageHandler = wsService.onMessage(async (message: WebSocketMessage) => {
       console.log('📨 Mensaje WebSocket en NotificationContext:', message.tipo);
 
       if (message.tipo === 'nueva_alerta' && message.alerta) {
@@ -153,19 +153,32 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           AsyncStorage.setItem('lastAlertId', alerta.id.toString());
         }
 
-        // Mostrar alerta visual en web
-        const mensaje = `${alerta.nombre_adulto_mayor} ha solicitado ayuda`;
-        console.log(`🚨 ALERTA: ${mensaje}`);
+        // Determinar tipo y mensaje según el tipo de alerta
+        let titulo: string;
+        let mensaje: string;
+        let emoji: string;
+
+        if (alerta.tipo_alerta === 'caida') {
+          titulo = '🚨 Alerta de Caída Detectada';
+          emoji = '⚠️';
+          mensaje = `${alerta.nombre_adulto_mayor || 'Un adulto mayor'} - Posible caída detectada`;
+        } else { // ayuda
+          titulo = '🚨 ¡SOLICITUD DE AYUDA!';
+          emoji = '🆘';
+          mensaje = `${alerta.nombre_adulto_mayor || 'Un adulto mayor'} ha solicitado ayuda`;
+        }
+
+        console.log(`${emoji} ALERTA (${alerta.tipo_alerta}): ${mensaje}`);
 
         // En web, SIEMPRE mostrar alert() para garantizar que se vea
         if (Platform.OS === 'web') {
-          alert(`🚨 ¡SOLICITUD DE AYUDA!\n\n${mensaje}\n\nAlerta ID: ${alerta.id}`);
+          alert(`${titulo}\n\n${mensaje}\n\nAlerta ID: ${alerta.id}`);
         }
 
         // Adicionalmente, intentar notificación del navegador si está permitido
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           try {
-            new Notification('¡Solicitud de Ayuda!', {
+            new Notification(titulo, {
               body: mensaje,
               icon: '/icon.png',
               badge: '/icon.png',
@@ -177,8 +190,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           }
         }
 
-        // Actualizar contador de alertas
-        checkForNewAlerts();
+        // Actualizar contador de alertas y forzar refresh
+        await checkForNewAlerts();
+
+        // Disparar evento personalizado para que los componentes se actualicen
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('nueva-alerta', { detail: alerta }));
+        }
       }
     });
 
