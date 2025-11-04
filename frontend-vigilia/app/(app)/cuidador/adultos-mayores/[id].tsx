@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, Pressable, ScrollView,
-    ActivityIndicator, RefreshControl
+    ActivityIndicator, RefreshControl, TextInput, Alert, Modal
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import axios from 'axios';
 import CustomHeader from '../../../../components/CustomHeader';
-import { User, Calendar, MapPin, FileText, Bell, AlertTriangle, Heart } from 'lucide-react-native';
+import { User, Calendar, MapPin, FileText, Bell, AlertTriangle, Heart, Smartphone } from 'lucide-react-native';
 import { useAuth } from '../../../../contexts/AuthContext';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -33,15 +33,31 @@ type EventoCaida = {
     nombre_dispositivo?: string | null;
 };
 
+type DispositivoInfo = {
+    id: number;
+    identificador_hw: string;
+    nombre_dispositivo: string;
+    usuario_camara: string | null;
+    fecha_configuracion: string | null;
+};
+
 export default function AdultoMayorDetalleScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuth();
     const [adulto, setAdulto] = useState<AdultoMayorDetalle | null>(null);
     const [caidas, setCaidas] = useState<EventoCaida[]>([]);
+    const [dispositivo, setDispositivo] = useState<DispositivoInfo | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Estados para configuración de dispositivo
+    const [showDeviceConfig, setShowDeviceConfig] = useState(false);
+    const [hardwareId, setHardwareId] = useState('');
+    const [usuarioCamara, setUsuarioCamara] = useState('');
+    const [contrasenaCamara, setContrasenaCamara] = useState('');
+    const [configurandoDispositivo, setConfigurandoDispositivo] = useState(false);
 
     const fetchDatos = useCallback(async (isRefreshing = false) => {
         if (!user) return;
@@ -64,6 +80,17 @@ export default function AdultoMayorDetalleScreen() {
             }
 
             setAdulto(adultoEncontrado);
+
+            // Obtener información del dispositivo asociado
+            try {
+                const dispositivoResponse = await axios.get(`${API_URL}/dispositivos/adulto-mayor/${id}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setDispositivo(dispositivoResponse.data);
+            } catch (dispositivoError) {
+                console.log('No hay dispositivo configurado para este adulto mayor');
+                setDispositivo(null);
+            }
 
             // Obtener eventos de caída del adulto mayor
             try {
@@ -101,6 +128,62 @@ export default function AdultoMayorDetalleScreen() {
     const handleRefresh = () => {
         setRefreshing(true);
         fetchDatos(true);
+    };
+
+    const handleConfigurarDispositivo = async () => {
+        if (!hardwareId.trim()) {
+            Alert.alert('Error', 'Por favor ingresa el Hardware ID (MAC Address) del dispositivo');
+            return;
+        }
+        if (!usuarioCamara.trim()) {
+            Alert.alert('Error', 'Por favor ingresa el usuario de la cámara');
+            return;
+        }
+        if (!contrasenaCamara.trim()) {
+            Alert.alert('Error', 'Por favor ingresa la contraseña de la cámara');
+            return;
+        }
+
+        setConfigurandoDispositivo(true);
+
+        try {
+            const token = await user!.getIdToken();
+            await axios.post(
+                `${API_URL}/dispositivos/configurar`,
+                {
+                    identificador_hw: hardwareId.trim(),
+                    adulto_mayor_id: parseInt(id),
+                    usuario_camara: usuarioCamara.trim(),
+                    contrasena_camara: contrasenaCamara.trim()
+                },
+                {
+                    headers: { Authorization: `Bearer ${token}` }
+                }
+            );
+
+            // Cerrar modal y limpiar formulario
+            setShowDeviceConfig(false);
+            setHardwareId('');
+            setUsuarioCamara('');
+            setContrasenaCamara('');
+
+            // Refrescar datos para mostrar el dispositivo configurado
+            await fetchDatos();
+
+            Alert.alert(
+                'Éxito',
+                `Dispositivo NanoPi configurado exitosamente para ${adulto?.nombre_completo}.\n\nAhora los videos de este dispositivo se asociarán automáticamente.`
+            );
+
+        } catch (err) {
+            console.error('Error al configurar dispositivo:', err);
+            const mensaje = axios.isAxiosError(err)
+                ? err.response?.data?.detail || 'Error al configurar el dispositivo'
+                : 'Error inesperado al configurar el dispositivo';
+            Alert.alert('Error', mensaje);
+        } finally {
+            setConfigurandoDispositivo(false);
+        }
     };
 
     const calcularEdad = (fechaNacimiento: string | null): string => {
@@ -242,6 +325,66 @@ export default function AdultoMayorDetalleScreen() {
                     </Pressable>
                 </View>
 
+                {/* Configuración de Dispositivo NanoPi */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Smartphone size={20} color="#10b981" />
+                        <Text style={styles.sectionTitle}>
+                            Dispositivo NanoPi
+                            {dispositivo && <Text style={styles.dispositivoIdBadge}> • {dispositivo.identificador_hw}</Text>}
+                        </Text>
+                    </View>
+
+                    {dispositivo ? (
+                        <View>
+                            <View style={styles.dispositivoInfo}>
+                                <Text style={styles.dispositivoInfoLabel}>Hardware ID:</Text>
+                                <Text style={styles.dispositivoInfoValue}>{dispositivo.identificador_hw}</Text>
+                            </View>
+                            <View style={styles.dispositivoInfo}>
+                                <Text style={styles.dispositivoInfoLabel}>Nombre:</Text>
+                                <Text style={styles.dispositivoInfoValue}>{dispositivo.nombre_dispositivo}</Text>
+                            </View>
+                            {dispositivo.usuario_camara && (
+                                <View style={styles.dispositivoInfo}>
+                                    <Text style={styles.dispositivoInfoLabel}>Usuario cámara:</Text>
+                                    <Text style={styles.dispositivoInfoValue}>{dispositivo.usuario_camara}</Text>
+                                </View>
+                            )}
+                            {dispositivo.fecha_configuracion && (
+                                <View style={styles.dispositivoInfo}>
+                                    <Text style={styles.dispositivoInfoLabel}>Configurado:</Text>
+                                    <Text style={styles.dispositivoInfoValue}>
+                                        {new Date(dispositivo.fecha_configuracion).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                            )}
+                            <Pressable
+                                style={[styles.configurarButton, styles.reconfigurarButton]}
+                                onPress={() => setShowDeviceConfig(true)}
+                            >
+                                <Smartphone size={20} color="#10b981" style={{ marginRight: 8 }} />
+                                <Text style={[styles.configurarButtonText, styles.reconfigurarButtonText]}>Reconfigurar</Text>
+                            </Pressable>
+                        </View>
+                    ) : (
+                        <View>
+                            <Text style={styles.descripcionDispositivo}>
+                                Configura el dispositivo NanoPi para monitoreo de caídas y asociarlo con{' '}
+                                {adulto.nombre_completo}.
+                            </Text>
+
+                            <Pressable
+                                style={styles.configurarButton}
+                                onPress={() => setShowDeviceConfig(true)}
+                            >
+                                <Smartphone size={20} color="white" style={{ marginRight: 8 }} />
+                                <Text style={styles.configurarButtonText}>Configurar Dispositivo</Text>
+                            </Pressable>
+                        </View>
+                    )}
+                </View>
+
                 {/* Últimas Caídas Detectadas */}
                 {caidas.length > 0 && (
                     <View style={styles.section}>
@@ -291,6 +434,84 @@ export default function AdultoMayorDetalleScreen() {
                     </View>
                 )}
             </ScrollView>
+
+            {/* Modal de Configuración de Dispositivo */}
+            <Modal
+                visible={showDeviceConfig}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setShowDeviceConfig(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Configurar Dispositivo NanoPi</Text>
+                        <Text style={styles.modalSubtitle}>
+                            Asociar dispositivo con {adulto?.nombre_completo}
+                        </Text>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Hardware ID (MAC Address)</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Ej: bec1a2c71301"
+                                value={hardwareId}
+                                onChangeText={setHardwareId}
+                                autoCapitalize="none"
+                                editable={!configurandoDispositivo}
+                            />
+                            <Text style={styles.inputHint}>
+                                Identificador único del dispositivo NanoPi
+                            </Text>
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Usuario de Cámara</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Usuario de acceso a la cámara"
+                                value={usuarioCamara}
+                                onChangeText={setUsuarioCamara}
+                                autoCapitalize="none"
+                                editable={!configurandoDispositivo}
+                            />
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Contraseña de Cámara</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="Contraseña de acceso a la cámara"
+                                value={contrasenaCamara}
+                                onChangeText={setContrasenaCamara}
+                                secureTextEntry
+                                editable={!configurandoDispositivo}
+                            />
+                        </View>
+
+                        <View style={styles.modalButtons}>
+                            <Pressable
+                                style={[styles.modalButton, styles.cancelButton]}
+                                onPress={() => setShowDeviceConfig(false)}
+                                disabled={configurandoDispositivo}
+                            >
+                                <Text style={styles.cancelButtonText}>Cancelar</Text>
+                            </Pressable>
+
+                            <Pressable
+                                style={[styles.modalButton, styles.saveButton, configurandoDispositivo && styles.disabledButton]}
+                                onPress={handleConfigurarDispositivo}
+                                disabled={configurandoDispositivo}
+                            >
+                                {configurandoDispositivo ? (
+                                    <ActivityIndicator color="white" size="small" />
+                                ) : (
+                                    <Text style={styles.saveButtonText}>Guardar</Text>
+                                )}
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -487,5 +708,142 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 14,
         fontWeight: '600',
+    },
+    descripcionDispositivo: {
+        fontSize: 14,
+        color: '#6b7280',
+        marginBottom: 16,
+        lineHeight: 20,
+    },
+    configurarButton: {
+        backgroundColor: '#10b981',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 12,
+    },
+    configurarButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    reconfigurarButton: {
+        backgroundColor: 'white',
+        borderWidth: 2,
+        borderColor: '#10b981',
+    },
+    reconfigurarButtonText: {
+        color: '#10b981',
+    },
+    dispositivoIdBadge: {
+        fontSize: 14,
+        fontWeight: '400',
+        color: '#6b7280',
+    },
+    dispositivoInfo: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#e5e7eb',
+    },
+    dispositivoInfoLabel: {
+        fontSize: 14,
+        color: '#6b7280',
+        fontWeight: '500',
+    },
+    dispositivoInfoValue: {
+        fontSize: 14,
+        color: '#1f2937',
+        fontWeight: '600',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalContent: {
+        backgroundColor: 'white',
+        borderRadius: 16,
+        padding: 24,
+        width: '100%',
+        maxWidth: 500,
+        shadowColor: '#000',
+        shadowOpacity: 0.25,
+        shadowOffset: { width: 0, height: 4 },
+        shadowRadius: 12,
+        elevation: 8,
+    },
+    modalTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: '#111827',
+        marginBottom: 4,
+        textAlign: 'center',
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        color: '#6b7280',
+        marginBottom: 24,
+        textAlign: 'center',
+    },
+    inputGroup: {
+        marginBottom: 20,
+    },
+    inputLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#374151',
+        marginBottom: 8,
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        backgroundColor: '#f9fafb',
+    },
+    inputHint: {
+        fontSize: 12,
+        color: '#9ca3af',
+        marginTop: 4,
+        fontStyle: 'italic',
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 8,
+    },
+    modalButton: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelButton: {
+        backgroundColor: '#e5e7eb',
+    },
+    cancelButtonText: {
+        color: '#374151',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    saveButton: {
+        backgroundColor: '#10b981',
+    },
+    saveButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    disabledButton: {
+        opacity: 0.6,
     },
 });

@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 # --- CONFIGURACIÓN ---
 PROJECT_ID = os.environ.get("GCP_PROJECT", "composed-apogee-475623-p6")
 BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "https://api-backend-wsqxyy54za-uc.a.run.app")
-INTERNAL_API_KEY = os.environ.get("internal-api-key", "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO_TEST2")
+# Limpiar el API key de posibles espacios en blanco o saltos de línea
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO").strip()
 
 app = FastAPI(title="Procesador de Video - VigilIA")
 
@@ -78,10 +79,11 @@ def process_video_for_fall_detection(video_path: str) -> bool:
     return fall_detected
 
 # --- NUEVA FUNCIÓN ---
-def get_or_create_device_id(hardware_id: str) -> int:
+def get_or_create_device_id(hardware_id: str) -> dict:
     """
     Llama al backend para obtener o crear un ID numérico para un dispositivo
     basado en su ID de hardware (MAC address).
+    Retorna un dict con 'id' y 'adulto_mayor_id' (puede ser None).
     """
     endpoint = f"{BACKEND_API_URL}/dispositivos/get-or-create"
     headers = {
@@ -89,22 +91,25 @@ def get_or_create_device_id(hardware_id: str) -> int:
         "Content-Type": "application/json"
     }
     payload = {"hardware_id": hardware_id}
-    
+
     print(f"Consultando al backend por el ID de hardware: {hardware_id}")
     try:
         response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
         response.raise_for_status()
         response_data = response.json()
         device_id = response_data.get("id")
+        adulto_mayor_id = response_data.get("adulto_mayor_id")
+
         if device_id is None:
             raise HTTPException(status_code=500, detail="El backend no devolvió un ID de dispositivo.")
-        print(f"✅ Backend devolvió el ID de dispositivo numérico: {device_id}")
-        return device_id
+
+        print(f"✅ Backend devolvió el ID de dispositivo numérico: {device_id}, Adulto Mayor ID: {adulto_mayor_id}")
+        return {"id": device_id, "adulto_mayor_id": adulto_mayor_id}
     except requests.exceptions.RequestException as e:
         print(f"❌ Error al comunicarse con el backend para obtener el ID del dispositivo: {e}")
         raise HTTPException(status_code=502, detail=f"Error al comunicarse con el backend: {e}")
 
-def notify_backend(dispositivo_id: int, url_video: str):
+def notify_backend(dispositivo_id: int, adulto_mayor_id: int | None, url_video: str):
     """Notifica al backend API sobre el evento de caída."""
     endpoint = f"{BACKEND_API_URL}/eventos-caida/notificar"
     headers = {
@@ -116,8 +121,14 @@ def notify_backend(dispositivo_id: int, url_video: str):
         "timestamp_caida": datetime.now(timezone.utc).isoformat(),
         "url_video_almacenado": url_video
     }
-    
-    print(f"Enviando notificación de caída al backend para el dispositivo ID: {dispositivo_id}")
+
+    # Si tenemos el adulto_mayor_id, también lo enviamos para mejorar el contexto
+    if adulto_mayor_id:
+        payload["adulto_mayor_id"] = adulto_mayor_id
+        print(f"Enviando notificación de caída al backend para el dispositivo ID: {dispositivo_id}, Adulto Mayor ID: {adulto_mayor_id}")
+    else:
+        print(f"Enviando notificación de caída al backend para el dispositivo ID: {dispositivo_id} (sin adulto mayor asociado)")
+
     try:
         response = requests.post(endpoint, json=payload, headers=headers, timeout=10)
         response.raise_for_status()
@@ -158,9 +169,11 @@ async def process_video_event(request: PubSubRequest = Body(...)):
         print(f"❌ No se pudo extraer el ID de hardware de la ruta: {file_name}. Error: {e}")
         return # Terminar exitosamente para que Pub/Sub no reintente
 
-    # 1. Obtener el ID numérico del dispositivo desde el backend
+    # 1. Obtener el ID numérico del dispositivo y el adulto_mayor_id desde el backend
     try:
-        dispositivo_id_numerico = get_or_create_device_id(hardware_id)
+        device_info = get_or_create_device_id(hardware_id)
+        dispositivo_id_numerico = device_info["id"]
+        adulto_mayor_id = device_info.get("adulto_mayor_id")  # Puede ser None
     except HTTPException as e:
         # Si no se puede contactar al backend, no podemos continuar.
         # El error ya se ha logueado. Devolvemos 500 para que Pub/Sub pueda reintentar.
@@ -168,14 +181,14 @@ async def process_video_event(request: PubSubRequest = Body(...)):
 
     # 2. Descargar el video
     local_video_path = download_video_from_gcs(bucket_name, file_name)
-    
+
     # 3. Procesar el video
     fall_detected = process_video_for_fall_detection(local_video_path)
-    
+
     # 4. Si se detecta una caída, notificar al backend
     if fall_detected:
         url_video_almacenado = f"gs://{bucket_name}/{file_name}"
-        notify_backend(dispositivo_id_numerico, url_video_almacenado)
+        notify_backend(dispositivo_id_numerico, adulto_mayor_id, url_video_almacenado)
         
     # 5. Limpiar el archivo local
     try:

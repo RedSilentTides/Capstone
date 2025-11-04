@@ -289,16 +289,20 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 # --- INICIO: NUEVA DEPENDENCIA DE SEGURIDAD INTERNA ---
 # !! IMPORTANTE: Cambia esta clave por una cadena aleatoria y segura.
 # Esta clave la guardarás en Secret Manager para AMBOS servicios.
-INTERNAL_API_KEY_SECRET_NAME = "internal-api-key" # El nombre del secret en Secret Manager
-INTERNAL_API_KEY = os.environ.get(INTERNAL_API_KEY_SECRET_NAME, "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO_TEST1")
+# El secret en GCP se llama "internal-api-key" y se mapea a la variable INTERNAL_API_KEY
+# Limpiar el API key de posibles espacios en blanco o saltos de línea
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO").strip()
 
 async def verify_internal_token(x_internal_token: str = Header(None)):
     """Verifica que la llamada provenga de otro servicio tuyo."""
     if not x_internal_token:
          print(f"❌ Acceso interno denegado. Falta X-Internal-Token.")
          raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta token de autorización interna.")
-    
-    if x_internal_token != INTERNAL_API_KEY:
+
+    # Limpiar el token recibido de posibles espacios en blanco o saltos de línea
+    clean_token = x_internal_token.strip()
+
+    if clean_token != INTERNAL_API_KEY:
         print(f"❌ Intento de acceso interno fallido. Token recibido no coincide.")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no autorizado.")
     return True
@@ -942,6 +946,25 @@ class DeviceHardwareInfo(BaseModel):
 
 class DeviceInfo(BaseModel):
     id: int
+    adulto_mayor_id: int | None = None
+
+class DeviceConfigRequest(BaseModel):
+    identificador_hw: str
+    adulto_mayor_id: int
+    usuario_camara: str
+    contrasena_camara: str
+
+class DeviceConfigResponse(BaseModel):
+    success: bool
+    message: str
+    device_id: int
+
+class DeviceDetailsResponse(BaseModel):
+    id: int
+    identificador_hw: str
+    nombre_dispositivo: str
+    usuario_camara: str | None = None
+    fecha_configuracion: str | None = None
 
 @app.post("/dispositivos/get-or-create", response_model=DeviceInfo)
 async def get_or_create_device(
@@ -961,14 +984,15 @@ async def get_or_create_device(
             trans = db_conn.begin()
             try:
                 # 1. Buscar si el dispositivo ya existe
-                query_find = text("SELECT id FROM dispositivos WHERE identificador_hw = :hw_id")
+                query_find = text("SELECT id, adulto_mayor_id FROM dispositivos WHERE identificador_hw = :hw_id")
                 existing_device = db_conn.execute(query_find, {"hw_id": hw_id}).fetchone()
 
                 if existing_device:
                     device_id = existing_device[0]
-                    print(f"✅ Dispositivo encontrado con ID numérico: {device_id}")
+                    adulto_mayor_id = existing_device[1]
+                    print(f"✅ Dispositivo encontrado con ID numérico: {device_id}, Adulto Mayor ID: {adulto_mayor_id}")
                     trans.commit()
-                    return DeviceInfo(id=device_id)
+                    return DeviceInfo(id=device_id, adulto_mayor_id=adulto_mayor_id)
 
                 # 2. Si no existe, crearlo
                 print(f"ℹ️ Dispositivo no encontrado. Creando nuevo registro...")
@@ -990,9 +1014,9 @@ async def get_or_create_device(
 
                 new_device_id = new_device_result[0]
                 print(f"✅ Nuevo dispositivo creado con ID numérico: {new_device_id}")
-                
+
                 trans.commit()
-                return DeviceInfo(id=new_device_id)
+                return DeviceInfo(id=new_device_id, adulto_mayor_id=None)
 
             except Exception as e_db:
                 print(f"--- ERROR DURANTE BÚSQUEDA/CREACIÓN DE DISPOSITIVO ---")
@@ -1006,6 +1030,167 @@ async def get_or_create_device(
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado: {str(e)}")
+
+@app.post("/dispositivos/configurar", response_model=DeviceConfigResponse)
+async def configurar_dispositivo(
+    config: DeviceConfigRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Endpoint para configurar un dispositivo NanoPi.
+    Asocia un dispositivo (por su hardware_id) con un adulto mayor y guarda las credenciales de la cámara.
+    """
+    # Obtener información completa del usuario desde la BD
+    user_info = read_users_me(current_user)
+
+    print(f"📱 Configurando dispositivo: {config.identificador_hw}")
+    print(f"   Adulto Mayor ID: {config.adulto_mayor_id}")
+    print(f"   Usuario Cámara: {config.usuario_camara}")
+
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            try:
+                # 1. Verificar que el adulto mayor existe y pertenece al cuidador
+                user_db_id = user_info.id
+                verify_query = text("""
+                    SELECT am.id FROM adultos_mayores am
+                    JOIN cuidadores_adultos_mayores cam ON am.id = cam.adulto_mayor_id
+                    WHERE am.id = :adulto_mayor_id AND cam.usuario_id = :cuidador_id
+                """)
+                adulto_existe = db_conn.execute(verify_query, {
+                    "adulto_mayor_id": config.adulto_mayor_id,
+                    "cuidador_id": user_db_id
+                }).fetchone()
+
+                if not adulto_existe:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="No tienes permiso para configurar este adulto mayor"
+                    )
+
+                # 2. Buscar si el dispositivo ya existe
+                find_device = text("SELECT id FROM dispositivos WHERE identificador_hw = :hw_id")
+                existing_device = db_conn.execute(find_device, {"hw_id": config.identificador_hw}).fetchone()
+
+                device_id = None
+                if existing_device:
+                    # 3a. Si existe, actualizar la configuración
+                    device_id = existing_device[0]
+                    print(f"   Actualizando dispositivo existente ID: {device_id}")
+
+                    update_query = text("""
+                        UPDATE dispositivos
+                        SET adulto_mayor_id = :adulto_mayor_id,
+                            usuario_camara = :usuario_camara,
+                            contrasena_camara_encrypted = :contrasena,
+                            fecha_configuracion = CURRENT_TIMESTAMP
+                        WHERE id = :device_id
+                    """)
+                    db_conn.execute(update_query, {
+                        "adulto_mayor_id": config.adulto_mayor_id,
+                        "usuario_camara": config.usuario_camara,
+                        "contrasena": config.contrasena_camara,  # TODO: Encriptar en producción
+                        "device_id": device_id
+                    })
+                else:
+                    # 3b. Si no existe, crearlo con toda la configuración
+                    print(f"   Creando nuevo dispositivo")
+                    nombre_dispositivo = f"NanoPi ({config.identificador_hw[-6:]})"
+
+                    create_query = text("""
+                        INSERT INTO dispositivos
+                        (nombre_dispositivo, identificador_hw, adulto_mayor_id,
+                         usuario_camara, contrasena_camara_encrypted, fecha_configuracion)
+                        VALUES (:nombre, :hw_id, :adulto_mayor_id, :usuario_camara, :contrasena, CURRENT_TIMESTAMP)
+                        RETURNING id
+                    """)
+                    result = db_conn.execute(create_query, {
+                        "nombre": nombre_dispositivo,
+                        "hw_id": config.identificador_hw,
+                        "adulto_mayor_id": config.adulto_mayor_id,
+                        "usuario_camara": config.usuario_camara,
+                        "contrasena": config.contrasena_camara  # TODO: Encriptar en producción
+                    }).fetchone()
+
+                    if not result:
+                        raise Exception("No se pudo crear el dispositivo")
+
+                    device_id = result[0]
+
+                trans.commit()
+                print(f"✅ Dispositivo configurado exitosamente. ID: {device_id}")
+
+                return DeviceConfigResponse(
+                    success=True,
+                    message=f"Dispositivo configurado exitosamente para {config.identificador_hw}",
+                    device_id=device_id
+                )
+
+            except HTTPException:
+                trans.rollback()
+                raise
+            except Exception as e:
+                trans.rollback()
+                print(f"❌ Error configurando dispositivo: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error al configurar dispositivo: {str(e)}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error inesperado: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error inesperado: {str(e)}"
+        )
+
+@app.get("/dispositivos/adulto-mayor/{adulto_mayor_id}", response_model=DeviceDetailsResponse | None)
+async def get_dispositivo_by_adulto_mayor(
+    adulto_mayor_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Obtiene el dispositivo NanoPi asociado a un adulto mayor.
+    Retorna None si no hay dispositivo configurado.
+    """
+    # Obtener información completa del usuario desde la BD
+    user_info = read_users_me(current_user)
+
+    try:
+        with engine.connect() as db_conn:
+            # Verificar que el cuidador tiene acceso a este adulto mayor
+            check_caregiver_relationship(db_conn, user_info.id, adulto_mayor_id)
+
+            # Buscar el dispositivo asociado
+            query = text("""
+                SELECT id, identificador_hw, nombre_dispositivo, usuario_camara, fecha_configuracion
+                FROM dispositivos
+                WHERE adulto_mayor_id = :adulto_mayor_id
+            """)
+            result = db_conn.execute(query, {"adulto_mayor_id": adulto_mayor_id}).fetchone()
+
+            if not result:
+                return None
+
+            return DeviceDetailsResponse(
+                id=result[0],
+                identificador_hw=result[1],
+                nombre_dispositivo=result[2],
+                usuario_camara=result[3],
+                fecha_configuracion=result[4].isoformat() if result[4] else None
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error obteniendo dispositivo: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener dispositivo: {str(e)}"
+        )
 # --- FIN: NUEVOS MODELOS Y ENDPOINT ---
 
 
@@ -1847,7 +2032,7 @@ def crear_alerta(
             # Notificar via WebSocket a cuidadores conectados en tiempo real
             try:
                 websocket_url = os.environ.get("WEBSOCKET_SERVICE_URL", "https://alertas-websocket-687053793381.southamerica-west1.run.app")
-                internal_key = os.environ.get("INTERNAL_API_KEY", "")
+                internal_key = os.environ.get("INTERNAL_API_KEY", "").strip()
 
                 alerta_dict = {
                     "id": result[0],

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
@@ -22,6 +22,7 @@ interface NotificationContextType {
   newAlertsCount: number;
   checkForNewAlerts: () => Promise<void>;
   isWebSocketConnected: boolean;
+  onNewAlert: (callback: () => void) => () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -31,6 +32,7 @@ const NotificationContext = createContext<NotificationContextType>({
   newAlertsCount: 0,
   checkForNewAlerts: async () => {},
   isWebSocketConnected: false,
+  onNewAlert: () => () => {},
 });
 
 export const useNotifications = () => useContext(NotificationContext);
@@ -49,6 +51,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const lastAlertIdRef = useRef<number | null>(null);
+  const newAlertCallbacks = useRef<Set<() => void>>(new Set());
 
   // Cargar lastAlertId desde AsyncStorage al montar
   useEffect(() => {
@@ -179,6 +182,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         // Actualizar contador de alertas
         checkForNewAlerts();
+
+        // Notificar a todos los componentes suscritos
+        newAlertCallbacks.current.forEach(callback => {
+          try {
+            callback();
+          } catch (e) {
+            console.error('Error ejecutando callback de nueva alerta:', e);
+          }
+        });
       }
     });
 
@@ -352,6 +364,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [isAuthenticated, user, userRole, expoPushToken]);
 
+  // Función para suscribirse a nuevas alertas
+  const onNewAlert = useCallback((callback: () => void) => {
+    newAlertCallbacks.current.add(callback);
+
+    // Retornar función de limpieza
+    return () => {
+      newAlertCallbacks.current.delete(callback);
+    };
+  }, []);
+
   return (
     <NotificationContext.Provider value={{
       expoPushToken,
@@ -359,7 +381,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       error,
       newAlertsCount,
       checkForNewAlerts,
-      isWebSocketConnected
+      isWebSocketConnected,
+      onNewAlert
     }}>
       {children}
     </NotificationContext.Provider>

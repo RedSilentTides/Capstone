@@ -13,7 +13,13 @@
       "Bash(cmd /c taskkill /PID 34248 /F)",
       "Bash(cmd /c taskkill /PID 24328 /F)",
       "Bash(timeout /t 5 /nobreak)",
-      "Bash(gcloud run services logs read:*)"
+      "Bash(gcloud run services logs read:*)",
+      "Bash(gcloud secrets list:*)",
+      "Bash(powershell -Command \"gcloud run services logs read api-backend --region southamerica-west1 --limit 30\")",
+      "Bash(powershell -Command \"gcloud run services logs read api-backend --region southamerica-west1 --limit 50 | Select-String -Pattern ''alerta|websocket|notif'' -Context 2\")",
+      "Bash(powershell -Command \"gcloud run services logs read procesador-videos --region southamerica-west1 --limit 50\")",
+      "Bash(gcloud builds list:*)",
+      "Bash(powershell -Command \"gcloud run services logs read procesador-videos --region southamerica-west1 --limit 10\")"
     ],
     "deny": [],
     "ask": []

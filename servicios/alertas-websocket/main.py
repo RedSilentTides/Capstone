@@ -309,9 +309,9 @@ async def notify_alert(
     Solo puede ser llamado por otros servicios internos con la clave correcta.
     """
     # Verificar clave interna (opcional: implementar autenticación entre servicios)
-    INTERNAL_KEY = os.environ.get("INTERNAL_API_KEY", "")
+    INTERNAL_KEY = os.environ.get("INTERNAL_API_KEY", "").strip()
 
-    if INTERNAL_KEY and x_internal_key != INTERNAL_KEY:
+    if INTERNAL_KEY and x_internal_key and x_internal_key.strip() != INTERNAL_KEY:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Clave interna inválida"
@@ -331,10 +331,9 @@ async def notify_alert(
             result = conn.execute(
                 text("""
                     SELECT u.firebase_uid, u.nombre
-                    FROM relaciones_cuidador r
-                    JOIN usuarios u ON r.cuidador_id = u.id
-                    WHERE r.adulto_mayor_id = :adulto_mayor_id
-                    AND r.estado = 'aceptada'
+                    FROM cuidadores_adultos_mayores cam
+                    JOIN usuarios u ON cam.usuario_id = u.id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
                 """),
                 {"adulto_mayor_id": adulto_mayor_id}
             )
