@@ -281,24 +281,26 @@ async def send_notification(notification: NotificationRequest):
 
     print(f"📤 Enviando notificación {notification.notification_type} a {notification.phone_number}")
 
-    # Formatear el mensaje según el tipo de notificación
-    emoji_map = {
-        "reminder": "⏰",
-        "alert": "⚠️",
-        "fall_detection": "🚨"
-    }
+    # TEMPORAL: Usar template hello_world para números de test
+    # TODO: Reemplazar con templates personalizados una vez aprobados por Meta
+    # Templates requeridos: alerta_caida, solicitud_ayuda, recordatorio_medicamento
 
-    emoji = emoji_map.get(notification.notification_type, "📢")
-    message_body = f"{emoji} *{notification.title}*\n\n{notification.body}\n\n_- VigilIA App_"
-
+    # Por ahora usamos hello_world que funciona con números de test
     payload = {
         "messaging_product": "whatsapp",
         "to": notification.phone_number,
-        "type": "text",
-        "text": {
-            "body": message_body
+        "type": "template",
+        "template": {
+            "name": "hello_world",
+            "language": {
+                "code": "en_US"
+            }
         }
     }
+
+    # Log del mensaje que se enviaría con template personalizado
+    print(f"📝 Tipo: {notification.notification_type} - {notification.title}")
+    print(f"📝 Contenido: {notification.body}")
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
