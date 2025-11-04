@@ -156,19 +156,31 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           AsyncStorage.setItem('lastAlertId', alerta.id.toString());
         }
 
-        // Mostrar alerta visual en web
-        const mensaje = `${alerta.nombre_adulto_mayor} ha solicitado ayuda`;
-        console.log(`🚨 ALERTA: ${mensaje}`);
+        // Mostrar alerta visual en web con mensaje según tipo de alerta
+        let titulo, mensaje, icono;
+
+        if (alerta.tipo_alerta === 'caida') {
+          titulo = '🚨 ¡ALERTA DE CAÍDA!';
+          mensaje = `${alerta.nombre_adulto_mayor} ha sufrido una posible caída`;
+          icono = '🚨';
+        } else {
+          // Por defecto: solicitud de ayuda manual
+          titulo = '🆘 ¡SOLICITUD DE AYUDA!';
+          mensaje = `${alerta.nombre_adulto_mayor} ha solicitado ayuda`;
+          icono = '🆘';
+        }
+
+        console.log(`${icono} ALERTA (${alerta.tipo_alerta}): ${mensaje}`);
 
         // En web, SIEMPRE mostrar alert() para garantizar que se vea
         if (Platform.OS === 'web') {
-          alert(`🚨 ¡SOLICITUD DE AYUDA!\n\n${mensaje}\n\nAlerta ID: ${alerta.id}`);
+          alert(`${titulo}\n\n${mensaje}\n\nAlerta ID: ${alerta.id}`);
         }
 
         // Adicionalmente, intentar notificación del navegador si está permitido
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           try {
-            new Notification('¡Solicitud de Ayuda!', {
+            new Notification(titulo, {
               body: mensaje,
               icon: '/icon.png',
               badge: '/icon.png',
