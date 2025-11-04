@@ -891,6 +891,23 @@ async def notificar_evento_caida(
 
                 adulto_mayor_id = adulto_result[0]
 
+                # Obtener información del adulto mayor ANTES del commit
+                query_adulto_info = text("""
+                    SELECT nombre_completo FROM adultos_mayores WHERE id = :adulto_mayor_id
+                """)
+                adulto_info = db_conn.execute(query_adulto_info, {"adulto_mayor_id": adulto_mayor_id}).fetchone()
+                nombre_adulto_mayor = adulto_info[0] if adulto_info else "Adulto Mayor"
+
+                # Obtener cuidadores ANTES del commit
+                query_cuidadores = text("""
+                    SELECT DISTINCT u.id, u.push_token
+                    FROM cuidadores_adultos_mayores cam
+                    JOIN usuarios u ON cam.usuario_id = u.id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                    AND u.push_token IS NOT NULL
+                """)
+                cuidadores = db_conn.execute(query_cuidadores, {"adulto_mayor_id": adulto_mayor_id}).fetchall()
+
                 # Insertar en la tabla alertas con tipo_alerta='caida'
                 query = text("""
                     INSERT INTO alertas (
@@ -910,20 +927,68 @@ async def notificar_evento_caida(
                     "url_video_almacenado": evento.url_video_almacenado
                 }).fetchone()
 
-                trans.commit()
-
                 if not result:
                     raise Exception("INSERT no devolvió el ID de la alerta de caída.")
 
                 evento_id = result[0]
+
+                trans.commit()
+
                 print(f"✅ Alerta de caída registrada en BD con ID: {evento_id} (adulto_mayor_id: {adulto_mayor_id})")
 
-                # --- TODO: LÓGICA DE NOTIFICACIÓN PUSH ---
-                # Aquí debes agregar la lógica para:
-                # 1. Buscar los cuidadores asociados a este dispositivo/adulto mayor (usando el dispositivo_id).
-                # 2. Obtener sus tokens FCM desde la tabla 'configuraciones_alerta'.
-                # 3. Enviarles una notificación push (FCM) para alertarlos.
-                
+                # --- NOTIFICACIONES PUSH ---
+                # Enviar notificaciones push a los cuidadores
+                try:
+
+                    # Enviar notificación push a cada cuidador
+                    for cuidador in cuidadores:
+                        push_token = cuidador[1]
+                        try:
+                            send_push_notification(
+                                push_token,
+                                "¡ALERTA DE CAÍDA!",
+                                f"{nombre_adulto_mayor} ha sufrido una posible caída",
+                                {"tipo": "alerta", "alertaId": evento_id, "tipoAlerta": "caida"}
+                            )
+                            print(f"📱 Notificación push enviada al cuidador (token: {push_token[:20]}...)")
+                        except Exception as push_error:
+                            print(f"⚠️  Error al enviar push a cuidador: {str(push_error)}")
+
+                except Exception as notif_error:
+                    print(f"⚠️  Error al enviar notificaciones push (alerta creada exitosamente): {str(notif_error)}")
+
+                # --- NOTIFICACIÓN VIA WEBSOCKET ---
+                # Notificar via WebSocket a cuidadores conectados en tiempo real
+                try:
+                    websocket_url = os.environ.get("WEBSOCKET_SERVICE_URL", "https://alertas-websocket-687053793381.southamerica-west1.run.app")
+                    internal_key = os.environ.get("INTERNAL_API_KEY", "").strip()
+
+                    alerta_dict = {
+                        "id": evento_id,
+                        "adulto_mayor_id": adulto_mayor_id,
+                        "tipo_alerta": "caida",
+                        "timestamp_alerta": evento.timestamp_caida.isoformat(),
+                        "dispositivo_id": evento.dispositivo_id,
+                        "url_video_almacenado": evento.url_video_almacenado,
+                        "nombre_adulto_mayor": nombre_adulto_mayor
+                    }
+
+                    response = requests.post(
+                        f"{websocket_url}/internal/notify-alert",
+                        json=alerta_dict,
+                        headers={"X-Internal-Key": internal_key},
+                        timeout=5
+                    )
+
+                    if response.status_code == 200:
+                        result_data = response.json()
+                        print(f"📢 Notificación WebSocket enviada: {result_data.get('notified_count', 0)} cuidadores notificados")
+                    else:
+                        print(f"⚠️  WebSocket respondió con código {response.status_code}")
+
+                except Exception as ws_error:
+                    print(f"⚠️  Error al enviar notificación WebSocket (alerta creada exitosamente): {str(ws_error)}")
+
                 return {"status": "evento registrado", "evento_id": evento_id}
 
             except Exception as e_db:

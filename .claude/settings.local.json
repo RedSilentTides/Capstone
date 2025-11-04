@@ -19,7 +19,8 @@
       "Bash(powershell -Command \"gcloud run services logs read api-backend --region southamerica-west1 --limit 50 | Select-String -Pattern ''alerta|websocket|notif'' -Context 2\")",
       "Bash(powershell -Command \"gcloud run services logs read procesador-videos --region southamerica-west1 --limit 50\")",
       "Bash(gcloud builds list:*)",
-      "Bash(powershell -Command \"gcloud run services logs read procesador-videos --region southamerica-west1 --limit 10\")"
+      "Bash(powershell -Command \"gcloud run services logs read procesador-videos --region southamerica-west1 --limit 10\")",
+      "Bash(powershell -Command \"gcloud run services logs read api-backend --region southamerica-west1 --limit 30 | Select-String -Pattern ''ERROR|Error|eventos-caida|Caída''\")"
     ],
     "deny": [],
     "ask": []
