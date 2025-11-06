@@ -206,40 +206,36 @@ export default function IndexScreen() {
     fetchAllData();
   }, [user, isAuthenticated]);
 
-  // Función para refrescar solo las alertas (se llama cuando llega una nueva vía WebSocket)
-  const refreshAlertas = useCallback(async () => {
-    if (!isAuthenticated || !user) return;
-
-    try {
-      const token = await user.getIdToken();
-      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
-
-      const alertasResponse = await axios.get(`${API_URL}/alertas`, authHeader);
-
-      const sortedAlertas = (alertasResponse.data as Alerta[]).sort(
-        (a, b) => new Date(b.timestamp_alerta).getTime() - new Date(a.timestamp_alerta).getTime()
-      );
-      setAlertas(sortedAlertas);
-
-      const noLeidas = sortedAlertas.filter(a => a.confirmado_por_cuidador === null || a.confirmado_por_cuidador === false).length;
-      setAlertasNoLeidas(noLeidas);
-      console.log(`IndexScreen: Alertas actualizadas: ${sortedAlertas.length}, No leídas: ${noLeidas}`);
-    } catch (error) {
-      console.error('Error al refrescar alertas:', error);
-    }
-  }, [isAuthenticated, user]);
-
-  // Suscribirse a nuevas alertas desde el WebSocket
+  // Escuchar eventos de nuevas alertas via WebSocket para actualizar la lista automáticamente
   useEffect(() => {
-    if (!userProfile || userProfile.rol !== 'cuidador') return;
+    if (Platform.OS !== 'web' || !user || !isAuthenticated) {
+      return;
+    }
 
-    const unsubscribe = onNewAlert(() => {
-      console.log('IndexScreen: Nueva alerta detectada, refrescando...');
-      refreshAlertas();
-    });
+    const handleNuevaAlerta = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const alerta = customEvent.detail;
+      console.log('🔄 Evento nueva-alerta recibido en index.tsx, actualizando lista...');
 
-    return unsubscribe;
-  }, [userProfile, onNewAlert, refreshAlertas]);
+      // Agregar la nueva alerta al principio de la lista
+      setAlertas((prevAlertas) => {
+        const alertaYaExiste = prevAlertas.some((a) => a.id === alerta.id);
+        if (alertaYaExiste) {
+          return prevAlertas; // No duplicar
+        }
+        return [alerta, ...prevAlertas];
+      });
+
+      // Actualizar el contador de alertas no leídas
+      setAlertasNoLeidas((prev) => prev + 1);
+    };
+
+    window.addEventListener('nueva-alerta', handleNuevaAlerta);
+
+    return () => {
+      window.removeEventListener('nueva-alerta', handleNuevaAlerta);
+    };
+  }, [user, isAuthenticated]);
 
   // Función para enviar alerta de ayuda
   const enviarAlertaAyuda = useCallback(async () => {

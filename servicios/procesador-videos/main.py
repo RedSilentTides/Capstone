@@ -12,8 +12,11 @@ from datetime import datetime, timezone
 # --- CONFIGURACIÓN ---
 PROJECT_ID = os.environ.get("GCP_PROJECT", "composed-apogee-475623-p6")
 BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "https://api-backend-wsqxyy54za-uc.a.run.app")
-# Limpiar el API key de posibles espacios en blanco o saltos de línea
-INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO").strip()
+# Intentar múltiples nombres de variable por si Cloud Run hace alguna transformación
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY") or os.environ.get("internal-api-key") or os.environ.get("internal_api_key") or "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO_TEST2"
+
+print(f"🔍 PROCESADOR DEBUG: INTERNAL_API_KEY = '{INTERNAL_API_KEY}' (len: {len(INTERNAL_API_KEY)})")
+print(f"🔍 PROCESADOR DEBUG: Todas las variables: {sorted(os.environ.keys())}")
 
 app = FastAPI(title="Procesador de Video - VigilIA")
 

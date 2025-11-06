@@ -149,9 +149,36 @@ export default function ConfiguracionScreen() {
       await axios.put(`${API_URL}/configuracion/`, dataToSend, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      Alert.alert('Éxito', 'Configuración guardada correctamente.');
+
+      // Si se activó WhatsApp y hay un número, enviar mensaje de bienvenida
+      if (config.notificar_whatsapp && config.numero_whatsapp) {
+        try {
+          console.log('Enviando mensaje de bienvenida por WhatsApp...');
+          await axios.post(
+            `${WHATSAPP_WEBHOOK_URL}/send-template`,
+            {
+              to: config.numero_whatsapp.replace(/\+/g, ''),
+              template_name: 'hello_world',
+              language_code: 'en_US'
+            },
+            {
+              headers: {
+                'X-API-Key': WHATSAPP_API_KEY,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          console.log('Mensaje de bienvenida enviado');
+        } catch (whatsappErr) {
+          console.error('Error al enviar mensaje de bienvenida:', whatsappErr);
+          // No bloqueamos el guardado si falla el mensaje
+        }
+      }
+
+      Alert.alert('Éxito', 'Configuración guardada correctamente.' +
+        (config.notificar_whatsapp && config.numero_whatsapp ? ' Se envió un mensaje de bienvenida a tu WhatsApp!' : ''));
       // Opcional: Volver a cargar la config para confirmar, o simplemente asumir éxito
-      // fetchConfig(); 
+      // fetchConfig();
     } catch (err) {
       console.error('Error al guardar configuración:', err);
        if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {

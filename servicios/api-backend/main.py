@@ -295,16 +295,21 @@ INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "CAMBIA_ESTA_CLAVE_SECRETA
 
 async def verify_internal_token(x_internal_token: str = Header(None)):
     """Verifica que la llamada provenga de otro servicio tuyo."""
+    print(f"🔍 DEBUG: Token recibido: '{x_internal_token}' (len: {len(x_internal_token) if x_internal_token else 0})")
+    print(f"🔍 DEBUG: Token esperado: '{INTERNAL_API_KEY}' (len: {len(INTERNAL_API_KEY)})")
+
     if not x_internal_token:
          print(f"❌ Acceso interno denegado. Falta X-Internal-Token.")
          raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta token de autorización interna.")
 
-    # Limpiar el token recibido de posibles espacios en blanco o saltos de línea
-    clean_token = x_internal_token.strip()
-
-    if clean_token != INTERNAL_API_KEY:
+    if x_internal_token != INTERNAL_API_KEY:
         print(f"❌ Intento de acceso interno fallido. Token recibido no coincide.")
+        print(f"🔍 DEBUG: Comparación byte a byte:")
+        print(f"   Recibido bytes: {x_internal_token.encode('utf-8').hex()}")
+        print(f"   Esperado bytes: {INTERNAL_API_KEY.encode('utf-8').hex()}")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acceso no autorizado.")
+
+    print(f"✅ Token interno verificado correctamente")
     return True
 # --- FIN: NUEVA DEPENDENCIA DE SEGURIDAD INTERNA ---
 
@@ -936,58 +941,131 @@ async def notificar_evento_caida(
 
                 print(f"✅ Alerta de caída registrada en BD con ID: {evento_id} (adulto_mayor_id: {adulto_mayor_id})")
 
-                # --- NOTIFICACIONES PUSH ---
-                # Enviar notificaciones push a los cuidadores
+                # --- LÓGICA DE NOTIFICACIÓN PUSH, WEBSOCKET Y WHATSAPP ---
+                # 1. Obtener nombre del adulto mayor
+                query_nombre = text("""
+                    SELECT nombre_completo FROM adultos_mayores WHERE id = :adulto_mayor_id
+                """)
+                nombre_result = db_conn.execute(query_nombre, {"adulto_mayor_id": adulto_mayor_id}).fetchone()
+                nombre_adulto = nombre_result[0] if nombre_result else "un adulto mayor"
+
+                # 2. Obtener cuidadores y sus tokens push
+                query_cuidadores = text("""
+                    SELECT u.id, u.nombre, ca.token_fcm_app, ca.notificar_app
+                    FROM usuarios u
+                    INNER JOIN cuidadores_adultos_mayores cam ON cam.usuario_id = u.id
+                    LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                      AND u.rol = 'cuidador'
+                """)
+                cuidadores = db_conn.execute(query_cuidadores, {"adulto_mayor_id": adulto_mayor_id}).fetchall()
+
+                # 3. Enviar notificaciones push
+                titulo = "🚨 Alerta de Caída Detectada"
+                mensaje = f"Posible caída detectada para {nombre_adulto}"
+
+                push_tokens = [c[2] for c in cuidadores if c[3] and c[2]]  # token_fcm_app y notificar_app=True
+                if push_tokens:
+                    try:
+                        expo_push_url = "https://exp.host/--/api/v2/push/send"
+                        push_messages = [
+                            {
+                                "to": token,
+                                "sound": "default",
+                                "title": titulo,
+                                "body": mensaje,
+                                "data": {"tipo": "caida", "alerta_id": evento_id}
+                            }
+                            for token in push_tokens
+                        ]
+                        push_response = requests.post(expo_push_url, json=push_messages, timeout=10)
+                        if push_response.status_code == 200:
+                            print(f"📱 Notificaciones push enviadas a {len(push_tokens)} cuidadores")
+                        else:
+                            print(f"⚠️  Error al enviar push: {push_response.status_code}")
+                    except Exception as push_error:
+                        print(f"⚠️  Error al enviar notificaciones push: {str(push_error)}")
+
+                # 4. Enviar notificación WebSocket
                 try:
+                    websocket_service_url = os.environ.get("WEBSOCKET_SERVICE_URL")
+                    internal_api_key = os.environ.get("INTERNAL_API_KEY", "")
 
-                    # Enviar notificación push a cada cuidador
-                    for cuidador in cuidadores:
-                        push_token = cuidador[1]
-                        try:
-                            send_push_notification(
-                                push_token,
-                                "¡ALERTA DE CAÍDA!",
-                                f"{nombre_adulto_mayor} ha sufrido una posible caída",
-                                {"tipo": "alerta", "alertaId": evento_id, "tipoAlerta": "caida"}
-                            )
-                            print(f"📱 Notificación push enviada al cuidador (token: {push_token[:20]}...)")
-                        except Exception as push_error:
-                            print(f"⚠️  Error al enviar push a cuidador: {str(push_error)}")
-
-                except Exception as notif_error:
-                    print(f"⚠️  Error al enviar notificaciones push (alerta creada exitosamente): {str(notif_error)}")
-
-                # --- NOTIFICACIÓN VIA WEBSOCKET ---
-                # Notificar via WebSocket a cuidadores conectados en tiempo real
-                try:
-                    websocket_url = os.environ.get("WEBSOCKET_SERVICE_URL", "https://alertas-websocket-687053793381.southamerica-west1.run.app")
-                    internal_key = os.environ.get("INTERNAL_API_KEY", "").strip()
-
-                    alerta_dict = {
-                        "id": evento_id,
-                        "adulto_mayor_id": adulto_mayor_id,
-                        "tipo_alerta": "caida",
-                        "timestamp_alerta": evento.timestamp_caida.isoformat(),
-                        "dispositivo_id": evento.dispositivo_id,
-                        "url_video_almacenado": evento.url_video_almacenado,
-                        "nombre_adulto_mayor": nombre_adulto_mayor
-                    }
-
-                    response = requests.post(
-                        f"{websocket_url}/internal/notify-alert",
-                        json=alerta_dict,
-                        headers={"X-Internal-Key": internal_key},
-                        timeout=5
-                    )
-
-                    if response.status_code == 200:
-                        result_data = response.json()
-                        print(f"📢 Notificación WebSocket enviada: {result_data.get('notified_count', 0)} cuidadores notificados")
-                    else:
-                        print(f"⚠️  WebSocket respondió con código {response.status_code}")
-
+                    if websocket_service_url:
+                        websocket_payload = {
+                            "id": evento_id,
+                            "adulto_mayor_id": adulto_mayor_id,
+                            "tipo_alerta": "caida",
+                            "timestamp_alerta": evento.timestamp_caida.isoformat(),
+                            "nombre_adulto_mayor": nombre_adulto,
+                            "url_video_almacenado": evento.url_video_almacenado,
+                            "dispositivo_id": evento.dispositivo_id
+                        }
+                        ws_response = requests.post(
+                            f"{websocket_service_url}/internal/notify-alert",
+                            json=websocket_payload,
+                            headers={"X-Internal-Key": internal_api_key},
+                            timeout=10
+                        )
+                        if ws_response.status_code == 200:
+                            data = ws_response.json()
+                            print(f"🌐 Notificación WebSocket enviada: {data.get('notified_count', 0)} cuidadores conectados")
+                        else:
+                            print(f"⚠️  WebSocket service error: {ws_response.status_code}")
                 except Exception as ws_error:
-                    print(f"⚠️  Error al enviar notificación WebSocket (alerta creada exitosamente): {str(ws_error)}")
+                    print(f"⚠️  Error al enviar notificación WebSocket: {str(ws_error)}")
+
+                # 5. Enviar notificaciones WhatsApp
+                try:
+                    query_whatsapp = text("""
+                        SELECT u.id, u.nombre, ca.numero_whatsapp
+                        FROM usuarios u
+                        INNER JOIN cuidadores_adultos_mayores cam ON cam.usuario_id = u.id
+                        LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
+                        WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                          AND ca.notificar_whatsapp = TRUE
+                          AND ca.numero_whatsapp IS NOT NULL
+                          AND u.rol = 'cuidador'
+                    """)
+                    whatsapp_configs = db_conn.execute(query_whatsapp, {"adulto_mayor_id": adulto_mayor_id}).fetchall()
+
+                    if whatsapp_configs:
+                        whatsapp_service_url = os.environ.get("WHATSAPP_SERVICE_URL", "https://whatsapp-webhook-687053793381.southamerica-west1.run.app")
+                        webhook_api_key = os.environ.get("WEBHOOK_API_KEY", "")
+
+                        whatsapp_success = 0
+                        whatsapp_fail = 0
+                        for config in whatsapp_configs:
+                            phone = config[2]
+                            payload = {
+                                "phone_number": phone,
+                                "notification_type": "fall_detection",
+                                "title": titulo,
+                                "body": mensaje
+                            }
+                            try:
+                                wsp_response = requests.post(
+                                    f"{whatsapp_service_url}/send-notification",
+                                    json=payload,
+                                    headers={"X-API-Key": webhook_api_key},
+                                    timeout=10
+                                )
+                                if wsp_response.status_code == 200:
+                                    whatsapp_success += 1
+                                    print(f"✅ WhatsApp enviado a {phone}")
+                                else:
+                                    whatsapp_fail += 1
+                                    print(f"⚠️  WhatsApp falló para {phone}: {wsp_response.status_code}")
+                            except Exception as wsp_error:
+                                whatsapp_fail += 1
+                                print(f"⚠️  Error WhatsApp para {phone}: {str(wsp_error)}")
+
+                        if whatsapp_success > 0:
+                            print(f"📱 Notificaciones WhatsApp enviadas a {whatsapp_success}/{whatsapp_success + whatsapp_fail} cuidadores")
+                    else:
+                        print(f"ℹ️  No hay cuidadores con WhatsApp habilitado para adulto mayor {adulto_mayor_id}")
+                except Exception as whatsapp_error:
+                    print(f"⚠️  Error al enviar notificaciones WhatsApp: {str(whatsapp_error)}")
 
                 return {"status": "evento registrado", "evento_id": evento_id}
 
@@ -2132,6 +2210,77 @@ def crear_alerta(
                 print(f"⚠️  Error al notificar via WebSocket (alerta creada exitosamente): {str(ws_error)}")
             except Exception as ws_error:
                 print(f"⚠️  Error inesperado al notificar via WebSocket: {str(ws_error)}")
+
+            # Enviar notificaciones WhatsApp a cuidadores configurados
+            try:
+                query_whatsapp = text("""
+                    SELECT u.id, u.nombre, ca.numero_whatsapp
+                    FROM usuarios u
+                    INNER JOIN cuidadores_adultos_mayores cam ON cam.usuario_id = u.id
+                    LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                      AND ca.notificar_whatsapp = TRUE
+                      AND ca.numero_whatsapp IS NOT NULL
+                      AND u.rol = 'cuidador'
+                """)
+                whatsapp_configs = db_conn.execute(
+                    query_whatsapp,
+                    {"adulto_mayor_id": alerta_data.adulto_mayor_id}
+                ).fetchall()
+
+                if whatsapp_configs:
+                    whatsapp_service_url = os.environ.get(
+                        "WHATSAPP_SERVICE_URL",
+                        "https://whatsapp-webhook-687053793381.southamerica-west1.run.app"
+                    )
+                    webhook_api_key = os.environ.get("WEBHOOK_API_KEY", "")
+
+                    whatsapp_count = 0
+                    for config in whatsapp_configs:
+                        phone = config[2]  # numero_whatsapp
+
+                        # Determinar tipo de notificación según tipo de alerta
+                        if alerta_data.tipo_alerta == 'ayuda':
+                            notification_type = "alert"
+                        else:  # caida
+                            notification_type = "fall_detection"
+
+                        payload = {
+                            "phone_number": phone,
+                            "notification_type": notification_type,
+                            "title": titulo,  # Ya definido anteriormente (línea ~1820)
+                            "body": mensaje   # Ya definido anteriormente (línea ~1820)
+                        }
+
+                        try:
+                            whatsapp_response = requests.post(
+                                f"{whatsapp_service_url}/send-notification",
+                                json=payload,
+                                headers={"X-API-Key": webhook_api_key},
+                                timeout=10
+                            )
+
+                            if whatsapp_response.status_code == 200:
+                                whatsapp_count += 1
+                                print(f"✅ WhatsApp enviado a {phone}")
+                            else:
+                                print(f"⚠️  WhatsApp falló para {phone}: {whatsapp_response.status_code}")
+
+                        except requests.exceptions.Timeout:
+                            print(f"⚠️  Timeout al enviar WhatsApp a {phone}")
+                        except Exception as wsp_single_error:
+                            print(f"⚠️  Error al enviar WhatsApp a {phone}: {str(wsp_single_error)}")
+
+                    if whatsapp_count > 0:
+                        print(f"📱 Notificaciones WhatsApp enviadas a {whatsapp_count}/{len(whatsapp_configs)} cuidadores")
+                    else:
+                        print(f"⚠️  No se pudieron enviar notificaciones WhatsApp")
+                else:
+                    print(f"ℹ️  No hay cuidadores con WhatsApp habilitado para adulto mayor {alerta_data.adulto_mayor_id}")
+
+            except Exception as whatsapp_error:
+                # No fallar la creación de alerta si falla WhatsApp
+                print(f"⚠️  Error al enviar notificaciones WhatsApp (alerta creada exitosamente): {str(whatsapp_error)}")
 
             return AlertaInfo(
                 **result._mapping,
