@@ -424,6 +424,106 @@ def enviar_push_notification(push_tokens: list[str], titulo: str, mensaje: str, 
         print(f"❌ Error inesperado al enviar notificaciones: {str(e)}")
         return {"success": False, "error": str(e)}
 
+
+def enviar_email_notificacion(
+    tipo_notificacion: str,
+    destinatarios: list[dict],
+    adulto_mayor_nombre: str,
+    timestamp: datetime,
+    **kwargs
+):
+    """
+    Envía notificaciones por email usando el servicio api-email.
+
+    Args:
+        tipo_notificacion: 'caida', 'ayuda', o 'recordatorio'
+        destinatarios: Lista de diccionarios con {email, nombre}
+        adulto_mayor_nombre: Nombre del adulto mayor
+        timestamp: Timestamp de la alerta/recordatorio
+        **kwargs: Parámetros adicionales según el tipo de notificación
+            - Para caida: url_video, dispositivo_id
+            - Para ayuda: mensaje_adicional
+            - Para recordatorio: titulo_recordatorio, descripcion, tipo_recordatorio, fecha_hora_programada
+
+    Returns:
+        Diccionario con el resultado del envío
+    """
+    if not destinatarios:
+        print("⚠️  No hay destinatarios de email")
+        return {"success": False, "message": "No hay destinatarios"}
+
+    email_service_url = os.environ.get("EMAIL_SERVICE_URL", "").strip()
+    internal_api_key = os.environ.get("INTERNAL_API_KEY", "").strip()
+
+    if not email_service_url:
+        print("⚠️  EMAIL_SERVICE_URL no configurado")
+        return {"success": False, "message": "Servicio de email no configurado"}
+
+    # Preparar el endpoint según el tipo de notificación
+    endpoint_map = {
+        "caida": "/send/alerta-caida",
+        "ayuda": "/send/alerta-ayuda",
+        "recordatorio": "/send/recordatorio"
+    }
+
+    endpoint = endpoint_map.get(tipo_notificacion)
+    if not endpoint:
+        print(f"⚠️  Tipo de notificación no válido: {tipo_notificacion}")
+        return {"success": False, "message": "Tipo de notificación inválido"}
+
+    # Preparar el payload según el tipo
+    payload = {
+        "tipo": tipo_notificacion,
+        "destinatarios": destinatarios,
+        "adulto_mayor_nombre": adulto_mayor_nombre,
+        "timestamp": timestamp.isoformat()
+    }
+
+    # Agregar campos específicos según el tipo
+    if tipo_notificacion == "caida":
+        payload["url_video"] = kwargs.get("url_video")
+        payload["dispositivo_id"] = kwargs.get("dispositivo_id")
+        payload["detalles_adicionales"] = kwargs.get("detalles_adicionales")
+    elif tipo_notificacion == "ayuda":
+        payload["mensaje_adicional"] = kwargs.get("mensaje_adicional")
+        payload["detalles_adicionales"] = kwargs.get("detalles_adicionales")
+    elif tipo_notificacion == "recordatorio":
+        payload["titulo_recordatorio"] = kwargs.get("titulo_recordatorio")
+        payload["descripcion"] = kwargs.get("descripcion")
+        payload["tipo_recordatorio"] = kwargs.get("tipo_recordatorio", "otro")
+        payload["fecha_hora_programada"] = kwargs.get("fecha_hora_programada", timestamp).isoformat()
+
+    try:
+        response = requests.post(
+            f"{email_service_url}{endpoint}",
+            json=payload,
+            headers={
+                "X-Internal-Key": internal_api_key,
+                "Content-Type": "application/json"
+            },
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            enviados = result.get("resultado", {}).get("enviados_exitosamente", 0)
+            print(f"✅ Emails enviados: {enviados}/{len(destinatarios)} destinatarios")
+            return {"success": True, "result": result, "sent_count": enviados}
+        else:
+            print(f"⚠️  Error al enviar emails: Status {response.status_code}")
+            print(f"   Response: {response.text}")
+            return {"success": False, "error": f"Status code {response.status_code}"}
+
+    except requests.exceptions.Timeout:
+        print(f"⚠️  Timeout al contactar servicio de email")
+        return {"success": False, "error": "Timeout"}
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error al enviar emails: {str(e)}")
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        print(f"❌ Error inesperado al enviar emails: {str(e)}")
+        return {"success": False, "error": str(e)}
+
 # --- FIN Helper Functions ---
 
 # --- Endpoints de la API ---
@@ -988,8 +1088,8 @@ async def notificar_evento_caida(
 
                 # 4. Enviar notificación WebSocket
                 try:
-                    websocket_service_url = os.environ.get("WEBSOCKET_SERVICE_URL")
-                    internal_api_key = os.environ.get("INTERNAL_API_KEY", "")
+                    websocket_service_url = os.environ.get("WEBSOCKET_SERVICE_URL", "").strip() or None
+                    internal_api_key = os.environ.get("INTERNAL_API_KEY", "").strip()
 
                     if websocket_service_url:
                         websocket_payload = {
@@ -1030,8 +1130,8 @@ async def notificar_evento_caida(
                     whatsapp_configs = db_conn.execute(query_whatsapp, {"adulto_mayor_id": adulto_mayor_id}).fetchall()
 
                     if whatsapp_configs:
-                        whatsapp_service_url = os.environ.get("WHATSAPP_SERVICE_URL", "https://whatsapp-webhook-687053793381.southamerica-west1.run.app")
-                        webhook_api_key = os.environ.get("WEBHOOK_API_KEY", "")
+                        whatsapp_service_url = os.environ.get("WHATSAPP_SERVICE_URL", "https://whatsapp-webhook-687053793381.southamerica-west1.run.app").strip()
+                        webhook_api_key = os.environ.get("WEBHOOK_API_KEY", "").strip()
 
                         whatsapp_success = 0
                         whatsapp_fail = 0
@@ -1066,6 +1166,52 @@ async def notificar_evento_caida(
                         print(f"ℹ️  No hay cuidadores con WhatsApp habilitado para adulto mayor {adulto_mayor_id}")
                 except Exception as whatsapp_error:
                     print(f"⚠️  Error al enviar notificaciones WhatsApp: {str(whatsapp_error)}")
+
+                # 6. Enviar notificaciones por Email
+                try:
+                    query_email = text("""
+                        SELECT u.id, u.nombre, u.email, ca.notificar_email, ca.email_secundario
+                        FROM usuarios u
+                        INNER JOIN cuidadores_adultos_mayores cam ON cam.usuario_id = u.id
+                        LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
+                        WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                          AND u.rol = 'cuidador'
+                          AND (ca.notificar_email IS NULL OR ca.notificar_email = TRUE)
+                    """)
+                    email_configs = db_conn.execute(query_email, {"adulto_mayor_id": adulto_mayor_id}).fetchall()
+
+                    if email_configs:
+                        # Preparar lista de destinatarios
+                        destinatarios_email = []
+                        for config in email_configs:
+                            nombre_cuidador = config[1]
+                            email_principal = config[2]
+                            email_secundario = config[4]
+
+                            # Usar email secundario si está configurado, sino el principal
+                            email_destino = email_secundario if email_secundario else email_principal
+
+                            if email_destino:
+                                destinatarios_email.append({
+                                    "email": email_destino,
+                                    "name": nombre_cuidador
+                                })
+
+                        if destinatarios_email:
+                            enviar_email_notificacion(
+                                tipo_notificacion="caida",
+                                destinatarios=destinatarios_email,
+                                adulto_mayor_nombre=nombre_adulto,
+                                timestamp=evento.timestamp_caida,
+                                url_video=evento.url_video_almacenado,
+                                dispositivo_id=evento.dispositivo_id
+                            )
+                        else:
+                            print(f"ℹ️  No hay emails válidos para enviar notificaciones")
+                    else:
+                        print(f"ℹ️  No hay cuidadores con email habilitado para adulto mayor {adulto_mayor_id}")
+                except Exception as email_error:
+                    print(f"⚠️  Error al enviar notificaciones por email: {str(email_error)}")
 
                 return {"status": "evento registrado", "evento_id": evento_id}
 
@@ -2211,6 +2357,57 @@ def crear_alerta(
             except Exception as ws_error:
                 print(f"⚠️  Error inesperado al notificar via WebSocket: {str(ws_error)}")
 
+            # Enviar notificaciones por Email
+            if alerta_data.tipo_alerta in ['ayuda', 'caida']:
+                try:
+                    query_email = text("""
+                        SELECT u.id, u.nombre, u.email, ca.notificar_email, ca.email_secundario
+                        FROM usuarios u
+                        INNER JOIN cuidadores_adultos_mayores cam ON cam.usuario_id = u.id
+                        LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
+                        WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                          AND u.rol = 'cuidador'
+                          AND (ca.notificar_email IS NULL OR ca.notificar_email = TRUE)
+                    """)
+                    email_configs = db_conn.execute(query_email, {"adulto_mayor_id": alerta_data.adulto_mayor_id}).fetchall()
+
+                    if email_configs:
+                        # Preparar lista de destinatarios
+                        destinatarios_email = []
+                        for config in email_configs:
+                            nombre_cuidador = config[1]
+                            email_principal = config[2]
+                            email_secundario = config[4]
+
+                            # Usar email secundario si está configurado, sino el principal
+                            email_destino = email_secundario if email_secundario else email_principal
+
+                            if email_destino:
+                                destinatarios_email.append({
+                                    "email": email_destino,
+                                    "name": nombre_cuidador
+                                })
+
+                        if destinatarios_email:
+                            # Determinar tipo de notificación
+                            tipo_email = "ayuda" if alerta_data.tipo_alerta == "ayuda" else "caida"
+
+                            enviar_email_notificacion(
+                                tipo_notificacion=tipo_email,
+                                destinatarios=destinatarios_email,
+                                adulto_mayor_nombre=nombre_adulto_mayor or "Adulto Mayor",
+                                timestamp=result[3] if result[3] else datetime.utcnow(),
+                                mensaje_adicional=alerta_data.detalles_adicionales.get("mensaje") if alerta_data.detalles_adicionales else None,
+                                url_video=alerta_data.url_video_almacenado,
+                                dispositivo_id=alerta_data.dispositivo_id
+                            )
+                        else:
+                            print(f"ℹ️  No hay emails válidos para enviar notificaciones")
+                    else:
+                        print(f"ℹ️  No hay cuidadores con email habilitado")
+                except Exception as email_error:
+                    print(f"⚠️  Error al enviar notificaciones por email: {str(email_error)}")
+
             # Enviar notificaciones WhatsApp a cuidadores configurados
             try:
                 query_whatsapp = text("""
@@ -2232,8 +2429,8 @@ def crear_alerta(
                     whatsapp_service_url = os.environ.get(
                         "WHATSAPP_SERVICE_URL",
                         "https://whatsapp-webhook-687053793381.southamerica-west1.run.app"
-                    )
-                    webhook_api_key = os.environ.get("WEBHOOK_API_KEY", "")
+                    ).strip()
+                    webhook_api_key = os.environ.get("WEBHOOK_API_KEY", "").strip()
 
                     whatsapp_count = 0
                     for config in whatsapp_configs:

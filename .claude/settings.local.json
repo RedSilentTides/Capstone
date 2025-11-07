@@ -19,7 +19,10 @@
       "Bash(powershell:*)",
       "Bash(curl:*)",
       "Bash(gcloud secrets versions add:*)",
-      "Bash(gcloud run services update:*)"
+      "Bash(gcloud run services update:*)",
+      "Bash(python:*)",
+      "Bash(gcloud secrets versions access:*)",
+      "Bash(gcloud run deploy:*)"
     ],
     "deny": [],
     "ask": []
