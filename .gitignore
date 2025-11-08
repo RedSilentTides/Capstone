@@ -18,6 +18,8 @@ servicios/api-backend/main copy.py
 servicios/api-email
 frontend-vigilia\.gitignore
 *.ps1
+.firebaserc
+firebase.json
 
 # Native
 .kotlin/
