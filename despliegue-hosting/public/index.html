@@ -255,6 +255,64 @@
       font-size: 1rem;
     }
 
+    /* Contact Section */
+    .contact-section {
+      max-width: 600px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+      text-align: center;
+    }
+
+    .contact-card {
+      background: white;
+      padding: 2.5rem 2rem;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      border: 2px solid #7c3aed;
+      animation: fadeInUp 0.6s ease-out both;
+      animation-delay: 0.4s;
+    }
+
+    .contact-card h2 {
+      color: #1B4965;
+      font-size: 1.75rem;
+      margin-bottom: 1rem;
+      font-weight: 700;
+    }
+
+    .contact-info {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .phone-icon {
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
+    }
+
+    .phone-number {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #1B4965;
+      letter-spacing: 0.5px;
+    }
+
+    .contact-label {
+      color: #6b7280;
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
     /* Footer */
     footer {
       background: linear-gradient(135deg, #1B4965 0%, #164054 100%);
@@ -267,6 +325,18 @@
     footer p {
       font-size: 0.95rem;
       opacity: 0.9;
+    }
+
+    .footer-contact {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .footer-contact p {
+      font-size: 1rem;
+      font-weight: 600;
+      opacity: 1;
     }
 
     /* Animated background elements */
@@ -344,6 +414,19 @@
         padding: 0.875rem 2rem;
         font-size: 1rem;
       }
+
+      .contact-card h2 {
+        font-size: 1.5rem;
+      }
+
+      .phone-number {
+        font-size: 1.25rem;
+      }
+
+      .contact-info {
+        flex-direction: column;
+        gap: 0.75rem;
+      }
     }
   </style>
 </head>
@@ -403,10 +486,26 @@
     </div>
   </section>
 
+  <!-- Contact Section -->
+  <section class="contact-section">
+    <div class="contact-card">
+      <p class="contact-label">Contacto Vigilia</p>
+      <h2>¿Necesitas ayuda?</h2>
+      <div class="contact-info">
+        <div class="phone-icon">📱</div>
+        <a href="tel:+56926243019" class="phone-number" style="text-decoration: none; color: #1B4965;">+56 9 2624 3019</a>
+      </div>
+    </div>
+  </section>
+
   <!-- Footer -->
   <footer>
     <p>&copy; 2025 VigilIA - Proyecto de Titulación. Todos los derechos reservados.</p>
     <p style="margin-top: 0.5rem; font-size: 0.875rem;">Desarrollo académico - Comisión Evaluadora</p>
+
+    <div class="footer-contact">
+      <p>Contacto Vigilia: +56 9 2624 3019</p>
+    </div>
   </footer>
 </body>
 </html>
