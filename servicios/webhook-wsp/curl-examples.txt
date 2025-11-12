@@ -1,0 +1,100 @@
+# ========================================
+# Ejemplos de CURL para WhatsApp Webhook
+# VigilIA - Proyecto de Titulación
+# ========================================
+
+CONFIGURACIÓN:
+--------------
+URL: https://whatsapp-webhook-687053793381.southamerica-west1.run.app
+API Key (X-API-Key): bfc79d65d767
+Teléfono de prueba: 56926243019
+
+NOTA: La WEBHOOK_API_KEY es para autenticación entre servicios (api-backend -> webhook)
+      El WHATSAPP_TOKEN es usado internamente por el webhook para llamar a la API de Meta
+
+========================================
+1. HEALTH CHECK (sin autenticación)
+========================================
+
+powershell -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Invoke-RestMethod -Method GET -Uri 'https://whatsapp-webhook-687053793381.southamerica-west1.run.app/health'"
+
+
+========================================
+2. ENDPOINT RAÍZ (sin autenticación)
+========================================
+
+powershell -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Invoke-RestMethod -Method GET -Uri 'https://whatsapp-webhook-687053793381.southamerica-west1.run.app/'"
+
+
+========================================
+3. ENVIAR TEMPLATE "hello_world"
+========================================
+
+powershell -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $headers = @{'X-API-Key' = 'bfc79d65d767'; 'Content-Type' = 'application/json'}; $body = @{to = '56926243019'; template_name = 'hello_world'; language_code = 'en_US'} | ConvertTo-Json; Invoke-RestMethod -Method POST -Uri 'https://whatsapp-webhook-687053793381.southamerica-west1.run.app/send-template' -Headers $headers -Body $body"
+
+
+========================================
+4. ENVIAR NOTIFICACIÓN
+========================================
+
+powershell -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $headers = @{'X-API-Key' = 'bfc79d65d767'; 'Content-Type' = 'application/json'}; $body = @{phone_number = '56926243019'; notification_type = 'alert'; title = 'Prueba VigilIA'; body = 'Mensaje de prueba'} | ConvertTo-Json; Invoke-RestMethod -Method POST -Uri 'https://whatsapp-webhook-687053793381.southamerica-west1.run.app/send-notification' -Headers $headers -Body $body"
+
+
+========================================
+5. ENVIAR MENSAJE DE TEXTO (Requiere número verificado en producción)
+========================================
+
+powershell -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $headers = @{'X-API-Key' = 'bfc79d65d767'; 'Content-Type' = 'application/json'}; $body = @{to = '56926243019'; message = 'Hola desde VigilIA'} | ConvertTo-Json; Invoke-RestMethod -Method POST -Uri 'https://whatsapp-webhook-687053793381.southamerica-west1.run.app/send-text' -Headers $headers -Body $body"
+
+
+========================================
+VERSIONES EDITABLES
+========================================
+
+# Para editar el número de teléfono, API key, etc., usa variables:
+
+$WEBHOOK_URL = "https://whatsapp-webhook-687053793381.southamerica-west1.run.app"
+$API_KEY = "bfc79d65d767"
+$PHONE = "56926243019"
+
+# Health Check
+Invoke-RestMethod -Method GET -Uri "$WEBHOOK_URL/health"
+
+# Enviar Template
+$headers = @{
+    'X-API-Key' = $API_KEY
+    'Content-Type' = 'application/json'
+}
+$body = @{
+    to = $PHONE
+    template_name = 'hello_world'
+    language_code = 'en_US'
+} | ConvertTo-Json
+Invoke-RestMethod -Method POST -Uri "$WEBHOOK_URL/send-template" -Headers $headers -Body $body
+
+# Enviar Notificación
+$headers = @{
+    'X-API-Key' = $API_KEY
+    'Content-Type' = 'application/json'
+}
+$body = @{
+    phone_number = $PHONE
+    notification_type = 'alert'
+    title = 'Alerta de Prueba'
+    body = 'Este es un mensaje de prueba desde VigilIA'
+} | ConvertTo-Json
+Invoke-RestMethod -Method POST -Uri "$WEBHOOK_URL/send-notification" -Headers $headers -Body $body
+
+
+========================================
+LOGS DEL SERVICIO (para debugging)
+========================================
+
+# Ver logs en tiempo real
+gcloud run services logs read whatsapp-webhook --limit=50 --format=json
+
+# Ver logs con filtro
+gcloud run services logs read whatsapp-webhook --limit=20 | Select-String "API Key"
+
+# Ver logs de errores
+gcloud run services logs read whatsapp-webhook --limit=50 | Select-String "Error"

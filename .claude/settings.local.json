@@ -22,7 +22,8 @@
       "Bash(gcloud run services update:*)",
       "Bash(python:*)",
       "Bash(gcloud secrets versions access:*)",
-      "Bash(gcloud run deploy:*)"
+      "Bash(gcloud run deploy:*)",
+      "Bash(timeout /t 3 /nobreak)"
     ],
     "deny": [],
     "ask": []

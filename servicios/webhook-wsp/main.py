@@ -8,19 +8,20 @@ from datetime import datetime
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- Configuración de WhatsApp API ---
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
-WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "910645965460337")
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "").strip()
+WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "885336931326209").strip()
 WHATSAPP_API_VERSION = "v22.0"
 WHATSAPP_API_URL = f"https://graph.facebook.com/{WHATSAPP_API_VERSION}/{WHATSAPP_PHONE_ID}/messages"
 
 # --- Configuración de Seguridad ---
-API_KEY = os.environ.get("API_KEY", "")
-WEBHOOK_VERIFY_TOKEN = os.environ.get("WEBHOOK_VERIFY_TOKEN", "")
+API_KEY = os.environ.get("API_KEY", "").strip()
+WEBHOOK_VERIFY_TOKEN = os.environ.get("WEBHOOK_VERIFY_TOKEN", "").strip()
 
 # Debug: Imprimir configuración al iniciar (solo primeros caracteres por seguridad)
 print(f"🔑 API_KEY configurado: {'SÍ (' + API_KEY[:4] + '...)' if API_KEY else 'NO - VACÍO'}")
 print(f"📱 WHATSAPP_TOKEN configurado: {'SÍ (' + WHATSAPP_TOKEN[:10] + '...)' if WHATSAPP_TOKEN else 'NO - VACÍO'}")
 print(f"📞 WHATSAPP_PHONE_ID: {WHATSAPP_PHONE_ID}")
+print(f"🔐 WEBHOOK_VERIFY_TOKEN configurado: {'SÍ (' + WEBHOOK_VERIFY_TOKEN + ')' if WEBHOOK_VERIFY_TOKEN else 'NO - VACÍO'}")
 
 # Inicializa FastAPI
 app = FastAPI(title="VigilIA WhatsApp Webhook")
@@ -117,6 +118,11 @@ async def verify_webhook(request: Request):
     challenge = request.query_params.get("hub.challenge")
 
     print(f"Webhook verification attempt: mode={mode}, token={token}")
+    print(f"🔍 Comparando tokens:")
+    print(f"   Recibido: '{token}' (len={len(token) if token else 0})")
+    print(f"   Esperado: '{WEBHOOK_VERIFY_TOKEN}' (len={len(WEBHOOK_VERIFY_TOKEN)})")
+    print(f"   Mode match: {mode == 'subscribe'}")
+    print(f"   Token match: {token == WEBHOOK_VERIFY_TOKEN}")
 
     if mode == "subscribe" and token == WEBHOOK_VERIFY_TOKEN:
         print("✅ Webhook verificado exitosamente")
