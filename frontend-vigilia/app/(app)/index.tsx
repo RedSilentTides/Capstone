@@ -5,9 +5,9 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios, { AxiosRequestConfig } from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNotifications } from '../../contexts/NotificationContext';
-import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, Heart, CalendarCheck } from 'lucide-react-native';
+import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, CalendarCheck } from 'lucide-react-native';
 
 // URL del backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -69,12 +69,27 @@ function AlertPreviewCard({
   alert,
   onPressAction,
   loading = false,
+  blocked = false,
+  blockedUntil,
 }: {
   alert: AlertItem;
   onPressAction?: () => void;
   loading?: boolean;
+  blocked?: boolean;
+  blockedUntil?: number;
 }) {
+  const [currentTime, setCurrentTime] = useState(Date.now());
   const config = alertConfig[alert.type];
+
+  // Actualizar cada segundo para mostrar countdown
+  useEffect(() => {
+    if (blocked && blockedUntil && blockedUntil > Date.now()) {
+      const interval = setInterval(() => {
+        setCurrentTime(Date.now());
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [blocked, blockedUntil]);
 
   const renderIcon = () => {
     const iconSize = 20;
@@ -91,6 +106,14 @@ function AlertPreviewCard({
       default:
         return <Info size={iconSize} color={iconColor} style={iconStyle} />;
     }
+  };
+
+  const getTimeRemaining = () => {
+    if (!blockedUntil) return '';
+    const remaining = Math.max(0, Math.ceil((blockedUntil - currentTime) / 1000));
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -111,9 +134,21 @@ function AlertPreviewCard({
 
         {/* Botón solo si hay acción (alertas) */}
         {onPressAction ? (
-          <Pressable style={[styles.goButton, loading && { opacity: 0.7 }]} onPress={loading ? undefined : onPressAction}>
+          <Pressable
+            style={[
+              styles.goButton,
+              (loading || blocked) && { opacity: 0.7, backgroundColor: '#9ca3af' }
+            ]}
+            onPress={(loading || blocked) ? undefined : onPressAction}
+            disabled={loading || blocked}
+          >
             {loading ? (
               <ActivityIndicator size="small" color="#fff" />
+            ) : blocked ? (
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[styles.goButtonText, { fontSize: 10 }]}>EN CAMINO</Text>
+                <Text style={[styles.goButtonText, { fontSize: 9 }]}>{getTimeRemaining()}</Text>
+              </View>
             ) : (
               <Text style={styles.goButtonText}>YA VOY</Text>
             )}
@@ -130,7 +165,6 @@ function AlertPreviewCard({
 export default function IndexScreen() {
   // --- INICIO DE ZONA DE HOOKS (TODOS JUNTOS) ---
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
-  const { onNewAlert } = useNotifications();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -156,6 +190,9 @@ export default function IndexScreen() {
   // ⬇️ loading por alerta al enviar "YA VOY"
   const [enviandoYaVoy, setEnviandoYaVoy] = useState<Set<number>>(new Set());
 
+  // ⬇️ Bloqueos de botón YA VOY: Map<alertaId, timestampDeBloqueoHasta>
+  const [bloqueosYaVoy, setBloqueosYaVoy] = useState<Map<number, number>>(new Map());
+
   // Funciones para formatear fecha y hora
   const formatFecha = (fecha: string) => {
       const date = new Date(fecha);
@@ -165,6 +202,61 @@ export default function IndexScreen() {
       const date = new Date(fecha);
       return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   };
+
+  // Cargar bloqueos desde AsyncStorage al montar y limpiar expirados
+  useEffect(() => {
+    const loadBlocks = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('bloqueosYaVoy');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const now = Date.now();
+          const validBlocks = new Map<number, number>();
+
+          // Solo mantener bloqueos que no han expirado
+          Object.entries(parsed).forEach(([alertId, timestamp]) => {
+            if (typeof timestamp === 'number' && timestamp > now) {
+              validBlocks.set(Number(alertId), timestamp);
+            }
+          });
+
+          setBloqueosYaVoy(validBlocks);
+          console.log('📱 Bloqueos YA VOY cargados:', validBlocks.size);
+        }
+      } catch (e) {
+        console.log('Error al cargar bloqueos YA VOY:', e);
+      }
+    };
+
+    loadBlocks();
+
+    // Limpiar bloqueos expirados cada 10 segundos
+    const cleanupInterval = setInterval(() => {
+      setBloqueosYaVoy(prev => {
+        const now = Date.now();
+        const newMap = new Map(prev);
+        let changed = false;
+
+        newMap.forEach((timestamp, alertId) => {
+          if (timestamp <= now) {
+            newMap.delete(alertId);
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          console.log('🧹 Limpiando bloqueos expirados');
+          // Persistir cambios
+          const obj = Object.fromEntries(newMap);
+          AsyncStorage.setItem('bloqueosYaVoy', JSON.stringify(obj));
+        }
+
+        return changed ? newMap : prev;
+      });
+    }, 10000);
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   // ⬇️ helper robusto para enviar "YA VOY" probando múltiples endpoints (prioriza el correcto)
   const sendYaVoyWithFallback = useCallback(
@@ -227,6 +319,14 @@ export default function IndexScreen() {
   const handleYaVoy = useCallback(async (alerta: Alerta) => {
     if (!user) return;
     const id = alerta.id;
+
+    // Verificar si está bloqueado
+    const blockedUntil = bloqueosYaVoy.get(id);
+    if (blockedUntil && blockedUntil > Date.now()) {
+      console.log('⏸️ Botón YA VOY bloqueado para alerta', id);
+      return;
+    }
+
     setEnviandoYaVoy(prev => new Set(prev).add(id));
     try {
       const token = await user.getIdToken();
@@ -239,6 +339,21 @@ export default function IndexScreen() {
       // marcar alerta como confirmada y ajustar contador
       setAlertas(prev => prev.map(a => (a.id === id ? { ...a, confirmado_por_cuidador: true } : a)));
       setAlertasNoLeidas(prev => Math.max(0, prev - 1));
+
+      // ✅ BLOQUEAR BOTÓN POR 3 MINUTOS (180000ms)
+      const blockUntil = Date.now() + 180000;
+      setBloqueosYaVoy(prev => {
+        const newMap = new Map(prev);
+        newMap.set(id, blockUntil);
+
+        // Persistir en AsyncStorage
+        const obj = Object.fromEntries(newMap);
+        AsyncStorage.setItem('bloqueosYaVoy', JSON.stringify(obj));
+
+        console.log(`🔒 Botón YA VOY bloqueado para alerta ${id} hasta ${new Date(blockUntil).toLocaleTimeString()}`);
+        return newMap;
+      });
+
     } catch (error) {
       console.error('Error YA VOY:', error);
       const msg =
@@ -253,8 +368,78 @@ export default function IndexScreen() {
         return copy;
       });
     }
-  }, [user, sendYaVoyWithFallback]);
+  }, [user, sendYaVoyWithFallback, bloqueosYaVoy]);
   
+  // Función reutilizable para refrescar datos del dashboard
+  const refetchDashboardData = useCallback(async (skipProfile = true) => {
+    if (!isAuthenticated || !user) {
+      return;
+    }
+
+    try {
+      const token = await user.getIdToken();
+      if (!token) {
+        console.error('No se pudo obtener el token de Firebase.');
+        return;
+      }
+
+      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
+
+      console.log('🔄 Refrescando datos del dashboard...');
+
+      // Realizar todas las llamadas en paralelo (excepto perfil si ya lo tenemos)
+      const requests = skipProfile
+        ? [
+            axios.get(`${API_URL}/solicitudes-cuidado/recibidas`, authHeader),
+            axios.get(`${API_URL}/recordatorios`, authHeader),
+            axios.get(`${API_URL}/alertas`, authHeader)
+          ]
+        : [
+            axios.get(`${API_URL}/usuarios/yo`, authHeader),
+            axios.get(`${API_URL}/solicitudes-cuidado/recibidas`, authHeader),
+            axios.get(`${API_URL}/recordatorios`, authHeader),
+            axios.get(`${API_URL}/alertas`, authHeader)
+          ];
+
+      const responses = await Promise.all(requests);
+
+      let profileResponse, solicitudesResponse, recordatoriosResponse, alertasResponse;
+
+      if (skipProfile) {
+        [solicitudesResponse, recordatoriosResponse, alertasResponse] = responses;
+      } else {
+        [profileResponse, solicitudesResponse, recordatoriosResponse, alertasResponse] = responses;
+        setUserProfile(profileResponse.data as UserProfile);
+        console.log('IndexScreen: Perfil obtenido:', profileResponse.data.rol);
+      }
+
+      // Procesar solicitudes
+      const pendientes = solicitudesResponse.data.filter((s: any) => s.estado === 'pendiente').length;
+      setSolicitudesPendientes(pendientes);
+
+      // Procesar recordatorios
+      const sortedRecordatorios = (recordatoriosResponse.data as Recordatorio[]).sort(
+          (a, b) => new Date(a.fecha_hora_programada).getTime() - new Date(b.fecha_hora_programada).getTime()
+      );
+      setRecordatorios(sortedRecordatorios);
+      console.log(`✅ Recordatorios actualizados: ${sortedRecordatorios.length}`);
+
+      // Procesar alertas
+      const sortedAlertas = (alertasResponse.data as Alerta[]).sort(
+          (a, b) => new Date(b.timestamp_alerta).getTime() - new Date(a.timestamp_alerta).getTime()
+      );
+      setAlertas(sortedAlertas);
+
+      // Contar alertas no leídas (las que no han sido confirmadas por el cuidador)
+      const noLeidas = sortedAlertas.filter(a => a.confirmado_por_cuidador === null || a.confirmado_por_cuidador === false).length;
+      setAlertasNoLeidas(noLeidas);
+      console.log(`✅ Alertas actualizadas: ${sortedAlertas.length}, No leídas: ${noLeidas}`);
+
+    } catch (fetchError) {
+      console.error('IndexScreen: Error al refrescar datos:', fetchError);
+    }
+  }, [user, isAuthenticated]);
+
   // Efecto para buscar el perfil del usuario y otros datos cuando está autenticado
   useEffect(() => {
     const fetchAllData = async () => {
@@ -267,92 +452,58 @@ export default function IndexScreen() {
       setProfileError(null);
 
       try {
-        const token = await user.getIdToken();
-        if (!token) {
-          throw new Error('No se pudo obtener el token de Firebase.');
-        }
-
-        const authHeader = { headers: { Authorization: `Bearer ${token}` } };
-
-        console.log('IndexScreen: Token OK, obteniendo todos los datos...');
-        
-        // Realizar todas las llamadas en paralelo
-        const [profileResponse, solicitudesResponse, recordatoriosResponse, alertasResponse] = await Promise.all([
-          axios.get(`${API_URL}/usuarios/yo`, authHeader),
-          axios.get(`${API_URL}/solicitudes-cuidado/recibidas`, authHeader),
-          axios.get(`${API_URL}/recordatorios`, authHeader),
-          axios.get(`${API_URL}/alertas`, authHeader)
-        ]);
-
-        // Procesar perfil
-        setUserProfile(profileResponse.data as UserProfile);
-        console.log('IndexScreen: Perfil obtenido:', profileResponse.data.rol);
-
-        // Procesar solicitudes
-        const pendientes = solicitudesResponse.data.filter((s: any) => s.estado === 'pendiente').length;
-        setSolicitudesPendientes(pendientes);
-
-        // Procesar recordatorios
-        const sortedRecordatorios = (recordatoriosResponse.data as Recordatorio[]).sort(
-            (a, b) => new Date(a.fecha_hora_programada).getTime() - new Date(b.fecha_hora_programada).getTime()
-        );
-        setRecordatorios(sortedRecordatorios);
-        console.log(`IndexScreen: Recordatorios obtenidos: ${sortedRecordatorios.length}`);
-
-        // Procesar alertas
-        const sortedAlertas = (alertasResponse.data as Alerta[]).sort(
-            (a, b) => new Date(b.timestamp_alerta).getTime() - new Date(a.timestamp_alerta).getTime()
-        );
-        setAlertas(sortedAlertas);
-
-        // Contar alertas no leídas (las que no han sido confirmadas por el cuidador)
-        const noLeidas = sortedAlertas.filter(a => a.confirmado_por_cuidador === null || a.confirmado_por_cuidador === false).length;
-        setAlertasNoLeidas(noLeidas);
-        console.log(`IndexScreen: Alertas obtenidas: ${sortedAlertas.length}, No leídas: ${noLeidas}`);
-
+        await refetchDashboardData(false); // Incluir perfil en la primera carga
       } catch (fetchError) {
         console.error('IndexScreen: Error al obtener datos:', fetchError);
         setProfileError('No se pudo cargar tu información. Intenta iniciar sesión de nuevo.');
         setUserProfile(null);
-        // El layout se encargará de la redirección si isAuthenticated cambia
       } finally {
         setProfileLoading(false);
       }
     };
 
     fetchAllData();
-  }, [user, isAuthenticated]);
+  }, [user, isAuthenticated, refetchDashboardData]);
 
-  // Escuchar eventos de nuevas alertas via WebSocket para actualizar la lista automáticamente
+  // Escuchar eventos de WebSocket para actualizar el dashboard automáticamente
   useEffect(() => {
-    if (Platform.OS !== 'web' || !user || !isAuthenticated) {
+    if (Platform.OS !== 'web' || !user || !isAuthenticated || !userProfile) {
       return;
     }
 
+    // Listener para nuevas alertas (CUIDADORES)
     const handleNuevaAlerta = async (event: Event) => {
       const customEvent = event as CustomEvent;
-      const alerta = customEvent.detail;
-      console.log('🔄 Evento nueva-alerta recibido en index.tsx, actualizando lista...');
+      console.log('🔔 Evento nueva-alerta recibido en index.tsx', customEvent.detail);
 
-      // Agregar la nueva alerta al principio de la lista
-      setAlertas((prevAlertas) => {
-        const alertaYaExiste = prevAlertas.some((a) => a.id === alerta.id);
-        if (alertaYaExiste) {
-          return prevAlertas; // No duplicar
-        }
-        return [alerta, ...prevAlertas];
-      });
-
-      // Actualizar el contador de alertas no leídas
-      setAlertasNoLeidas((prev) => prev + 1);
+      if (userProfile.rol === 'cuidador') {
+        // Refrescar todos los datos del dashboard para cuidadores
+        console.log('🔄 Refrescando dashboard de cuidador por nueva alerta...');
+        await refetchDashboardData(true);
+      }
     };
 
+    // Listener para confirmaciones de alerta (ADULTOS MAYORES)
+    const handleConfirmacionAlerta = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('💙 Evento confirmacion-alerta recibido en index.tsx', customEvent.detail);
+
+      if (userProfile.rol === 'adulto_mayor') {
+        // Refrescar alertas para mostrar el estado actualizado
+        console.log('🔄 Refrescando dashboard de adulto mayor por confirmación...');
+        await refetchDashboardData(true);
+      }
+    };
+
+    // Registrar listeners
     window.addEventListener('nueva-alerta', handleNuevaAlerta);
+    window.addEventListener('confirmacion-alerta', handleConfirmacionAlerta);
 
     return () => {
       window.removeEventListener('nueva-alerta', handleNuevaAlerta);
+      window.removeEventListener('confirmacion-alerta', handleConfirmacionAlerta);
     };
-  }, [user, isAuthenticated]);
+  }, [user, isAuthenticated, userProfile, refetchDashboardData]);
 
   // Función para enviar alerta de ayuda
   const enviarAlertaAyuda = useCallback(async () => {
@@ -387,6 +538,10 @@ export default function IndexScreen() {
 
       alert('¡Alerta de ayuda enviada! Tus cuidadores han sido notificados.');
 
+      // Refrescar el dashboard para que el adulto mayor vea su alerta inmediatamente
+      console.log('🔄 Refrescando dashboard después de enviar alerta...');
+      await refetchDashboardData(true);
+
     } catch (error) {
       console.error('Error al enviar alerta de ayuda:', error);
       const errorMessage = axios.isAxiosError(error)
@@ -396,7 +551,7 @@ export default function IndexScreen() {
     } finally {
       setIsEnviandoAlerta(false);
     }
-  }, [user, userProfile, isEnviandoAlerta]);
+  }, [user, userProfile, isEnviandoAlerta, refetchDashboardData]);
 
 
   // --- Renderizado ---
@@ -498,7 +653,11 @@ export default function IndexScreen() {
 
               {alertas.length > 0 ? (
                   <>
-                    {alertas.slice(0, 3).map((alerta) => ( // Mostrar las 3 más recientes
+                    {alertas.slice(0, 3).map((alerta) => {
+                      const blockedUntil = bloqueosYaVoy.get(alerta.id);
+                      const isBlocked = blockedUntil ? blockedUntil > Date.now() : false;
+
+                      return (
                         <AlertPreviewCard
                             key={`alert-${alerta.id}`}
                             alert={{
@@ -516,8 +675,11 @@ export default function IndexScreen() {
                             }}
                             onPressAction={() => handleYaVoy(alerta)}
                             loading={enviandoYaVoy.has(alerta.id)}
+                            blocked={isBlocked}
+                            blockedUntil={blockedUntil}
                         />
-                    ))}
+                      );
+                    })}
                   </>
               ) : (
                   <Text style={styles.noAlerts}>No hay alertas recientes.</Text>
@@ -593,6 +755,71 @@ export default function IndexScreen() {
                 <Text style={styles.buttonText}>BOTÓN DE AYUDA</Text>
               )}
             </Pressable>
+
+            {/* Sección de Alertas Confirmadas */}
+            <View style={styles.alertsSection}>
+              <Text style={styles.sectionTitle}>Estado de Mis Alertas</Text>
+              {alertas.length > 0 ? (
+                <>
+                  {alertas.slice(0, 5).map((alerta) => (
+                    <View
+                      key={`alert-am-${alerta.id}`}
+                      style={[
+                        styles.card,
+                        {
+                          borderLeftWidth: 4,
+                          borderLeftColor: alerta.confirmado_por_cuidador ? '#10b981' : '#f59e0b',
+                          borderWidth: 0,
+                          borderTopLeftRadius: 0,
+                          borderBottomLeftRadius: 0
+                        }
+                      ]}
+                    >
+                      <View style={styles.row}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                          {alerta.confirmado_por_cuidador ? (
+                            <CheckCircle size={20} color="#10b981" style={{ marginRight: 12 }} />
+                          ) : (
+                            <AlertTriangle size={20} color="#f59e0b" style={{ marginRight: 12 }} />
+                          )}
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.cardTitle}>
+                              {alerta.tipo_alerta === 'ayuda' ? 'Solicitud de Ayuda' : 'Alerta de Caída'}
+                            </Text>
+                            <Text style={styles.cardMessage}>
+                              {new Date(alerta.timestamp_alerta).toLocaleString('es-ES', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </Text>
+                            {alerta.notas && (
+                              <Text style={[styles.cardMessage, { color: '#10b981', fontWeight: '600', marginTop: 4 }]}>
+                                💙 {alerta.notas}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                        <View style={[
+                          styles.statusBadge,
+                          { backgroundColor: alerta.confirmado_por_cuidador ? '#d1fae5' : '#fef3c7' }
+                        ]}>
+                          <Text style={[
+                            styles.statusBadgeText,
+                            { color: alerta.confirmado_por_cuidador ? '#065f46' : '#92400e' }
+                          ]}>
+                            {alerta.confirmado_por_cuidador ? 'En camino' : 'Pendiente'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <Text style={styles.noAlerts}>No hay alertas recientes.</Text>
+              )}
+            </View>
 
             <Text style={styles.sectionTitle}>Mis Próximos Recordatorios</Text>
 
@@ -1001,5 +1228,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.4,
     textTransform: 'uppercase',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    alignSelf: 'center',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
 });
