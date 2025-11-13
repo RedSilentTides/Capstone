@@ -119,8 +119,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    if (!isAuthenticated || !user || userRole !== 'cuidador') {
-      // Desconectar si el usuario no está autenticado o no es cuidador
+    if (!isAuthenticated || !user || (userRole !== 'cuidador' && userRole !== 'adulto_mayor')) {
+      // Desconectar si el usuario no está autenticado o no es cuidador/adulto mayor
       resetWebSocketService();
       setIsWebSocketConnected(false);
       return;
@@ -143,6 +143,41 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // Configurar handler para mensajes
     const removeMessageHandler = wsService.onMessage(async (message: WebSocketMessage) => {
       console.log('📨 Mensaje WebSocket en NotificationContext:', message.tipo);
+
+      // Manejar confirmaciones de "YA VOY" para adultos mayores
+      if (message.tipo === 'confirmacion_alerta') {
+        const titulo = message.titulo || '💙 Tu cuidador está en camino';
+        const mensaje = message.mensaje || 'Ayuda en camino';
+
+        console.log(`💙 CONFIRMACIÓN RECIBIDA: ${titulo} - ${mensaje}`);
+
+        // Mostrar alert en web
+        if (Platform.OS === 'web') {
+          alert(`${titulo}\n\n${mensaje}`);
+        }
+
+        // Intentar notificación del navegador
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification(titulo, {
+              body: mensaje,
+              icon: '/icon.png',
+              badge: '/icon.png',
+              tag: `confirmacion-${message.alerta_id}`,
+              requireInteraction: false,
+            });
+          } catch (e) {
+            console.log('No se pudo mostrar notificación del navegador:', e);
+          }
+        }
+
+        // Disparar evento personalizado para que los componentes se actualicen si es necesario
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('confirmacion-alerta', { detail: message }));
+        }
+
+        return; // No continuar con el procesamiento de alertas
+      }
 
       if (message.tipo === 'nueva_alerta' && message.alerta) {
         const alerta = message.alerta;

@@ -32,7 +32,9 @@ origins = [
     "http://localhost:8081",
     "http://localhost:8080",
     "http://localhost:19006",
-    # Añade aquí la URL de tu frontend desplegado en producción
+    "https://mivigilia.cl",
+    "https://app.mivigilia.cl",
+    "exp://",  # Para Expo Go
 ]
 
 app.add_middleware(

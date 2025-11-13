@@ -23,7 +23,15 @@
       "Bash(python:*)",
       "Bash(gcloud secrets versions access:*)",
       "Bash(gcloud run deploy:*)",
-      "Bash(timeout /t 3 /nobreak)"
+      "Bash(timeout /t 3 /nobreak)",
+      "Bash(C:Usersacuritemp_logs.txt)",
+      "Bash(gcloud run services describe:*)",
+      "Bash(gcloud run services list:*)",
+      "Bash(C:Usersacuribackend_logs.json)",
+      "Bash(timeout /t 10 /nobreak)",
+      "Bash(npm run:*)",
+      "Bash(npx expo:*)",
+      "Bash(firebase deploy:*)"
     ],
     "deny": [],
     "ask": []

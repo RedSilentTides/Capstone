@@ -64,6 +64,9 @@ origins = [
     "http://localhost:8081",
     "http://localhost:8080",
     "http://localhost:19006",
+    "https://mivigilia.cl",
+    "https://app.mivigilia.cl",
+    "exp://",  # Para Expo Go
 ]
 
 app.add_middleware(
@@ -583,6 +586,35 @@ def register_user(user: UserCreate):
 
                 trans.commit()
                 print(f"✅ Transacción de BD confirmada.")
+
+                # Enviar email de bienvenida
+                try:
+                    email_service_url = os.environ.get("EMAIL_SERVICE_URL", "").strip()
+                    internal_api_key = os.environ.get("INTERNAL_API_KEY", "").strip()
+
+                    if email_service_url and internal_api_key:
+                        payload = {
+                            "destinatarios": [{"email": user.email, "name": user.nombre}],
+                            "nombre_usuario": user.nombre,
+                            "rol": user.rol
+                        }
+
+                        response = requests.post(
+                            f"{email_service_url}/send/bienvenida",
+                            json=payload,
+                            headers={"X-Internal-Key": internal_api_key},
+                            timeout=10
+                        )
+
+                        if response.status_code == 200:
+                            print(f"✅ Email de bienvenida enviado a {user.email}")
+                        else:
+                            print(f"⚠️  Error al enviar email de bienvenida: Status {response.status_code}")
+                    else:
+                        print(f"⚠️  No se pudo enviar email de bienvenida: servicio no configurado")
+                except Exception as email_error:
+                    print(f"⚠️  Error al enviar email de bienvenida: {str(email_error)}")
+                    # No lanzamos excepción para no afectar el registro exitoso del usuario
 
             except Exception as e_db:
                 print(f"--- ERROR DURANTE TRANSACCIÓN DE BD ---")
@@ -2588,6 +2620,7 @@ def actualizar_alerta(
 ):
     """
     Permite al cuidador marcar una alerta como confirmada/falsa alarma y agregar notas.
+    También envía una notificación push al adulto mayor cuando se confirma la alerta.
     """
     user_info = read_users_me(current_user)
 
@@ -2617,7 +2650,6 @@ def actualizar_alerta(
             )
 
         # Actualizar la alerta
-        trans = db_conn.begin()
         query_update = text("""
             UPDATE alertas
             SET confirmado_por_cuidador = :confirmado, notas = :notas
@@ -2631,7 +2663,7 @@ def actualizar_alerta(
             "notas": notas,
             "alerta_id": alerta_id
         }).fetchone()
-        trans.commit()
+        db_conn.commit()
 
         if not result:
             raise HTTPException(
@@ -2645,6 +2677,78 @@ def actualizar_alerta(
         """)
         nombre_result = db_conn.execute(query_nombre, {"id": result.adulto_mayor_id}).fetchone()
         nombre_adulto_mayor = nombre_result[0] if nombre_result else None
+
+        # Si la alerta fue confirmada (YA VOY), enviar notificaciones al adulto mayor
+        if confirmado and notas:
+            try:
+                # Obtener el push token del adulto mayor
+                query_push_token = text("""
+                    SELECT u.push_token, u.nombre
+                    FROM adultos_mayores am
+                    JOIN usuarios u ON am.usuario_id = u.id
+                    WHERE am.id = :adulto_mayor_id AND u.push_token IS NOT NULL
+                """)
+                token_result = db_conn.execute(query_push_token, {
+                    "adulto_mayor_id": result.adulto_mayor_id
+                }).fetchone()
+
+                if token_result and token_result[0]:
+                    push_token = token_result[0]
+                    nombre_adulto = token_result[1]
+
+                    # Enviar notificación push
+                    titulo = "💙 Tu cuidador está en camino"
+                    mensaje = f"{user_info.nombre} te confirmó: {notas}"
+
+                    enviar_push_notification(
+                        push_tokens=[push_token],
+                        titulo=titulo,
+                        mensaje=mensaje,
+                        data={
+                            "tipo": "confirmacion_alerta",
+                            "alerta_id": alerta_id,
+                            "cuidador_nombre": user_info.nombre
+                        }
+                    )
+                    print(f"📱 Notificación 'YA VOY' enviada a {nombre_adulto} (adulto mayor)")
+                else:
+                    print(f"⚠️  Adulto mayor no tiene push token configurado")
+
+                # Enviar notificación WebSocket en tiempo real para web
+                try:
+                    websocket_url = os.environ.get("WEBSOCKET_SERVICE_URL", "https://alertas-websocket-687053793381.southamerica-west1.run.app")
+                    internal_key = os.environ.get("INTERNAL_API_KEY", "").strip()
+
+                    confirmation_data = {
+                        "adulto_mayor_id": result.adulto_mayor_id,
+                        "alerta_id": alerta_id,
+                        "titulo": "💙 Tu cuidador está en camino",
+                        "mensaje": f"{user_info.nombre} te confirmó: {notas}",
+                        "cuidador_nombre": user_info.nombre
+                    }
+
+                    ws_response = requests.post(
+                        f"{websocket_url}/internal/notify-confirmation",
+                        json=confirmation_data,
+                        headers={"X-Internal-Key": internal_key},
+                        timeout=5
+                    )
+
+                    if ws_response.status_code == 200:
+                        ws_data = ws_response.json()
+                        if ws_data.get("notified"):
+                            print(f"🌐 Confirmación WebSocket enviada al adulto mayor")
+                        else:
+                            print(f"⚠️  Adulto mayor no conectado al WebSocket")
+                    else:
+                        print(f"⚠️  Error al enviar confirmación WebSocket: {ws_response.status_code}")
+
+                except Exception as ws_error:
+                    print(f"⚠️  Error al enviar confirmación WebSocket: {ws_error}")
+
+            except Exception as e:
+                # No fallar si la notificación falla, pero registrar el error
+                print(f"⚠️  Error al enviar notificaciones al adulto mayor: {e}")
 
         return AlertaInfo(
             **result._mapping,

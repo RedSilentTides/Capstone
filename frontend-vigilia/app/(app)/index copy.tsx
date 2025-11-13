@@ -4,7 +4,7 @@ import {
     Pressable, ScrollView, Platform, Modal
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import axios, { AxiosRequestConfig } from 'axios';
+import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, Heart, CalendarCheck } from 'lucide-react-native';
@@ -65,25 +65,18 @@ const alertConfig: Record<AlertType, { color: string }> = {
 };
 
 // --- Componente AlertPreviewCard ---
-function AlertPreviewCard({
-  alert,
-  onPressAction,
-  loading = false,
-}: {
-  alert: AlertItem;
-  onPressAction?: () => void;
-  loading?: boolean;
-}) {
+function AlertPreviewCard({ alert }: { alert: AlertItem }) {
   const config = alertConfig[alert.type];
-
   const renderIcon = () => {
     const iconSize = 20;
     const iconColor = config.color;
     const iconStyle = { marginRight: 12 };
+
     switch (alert.type) {
       case 'info':
         return <Info size={iconSize} color={iconColor} style={iconStyle} />;
       case 'warning':
+        return <AlertTriangle size={iconSize} color={iconColor} style={iconStyle} />;
       case 'error':
         return <AlertTriangle size={iconSize} color={iconColor} style={iconStyle} />;
       case 'success':
@@ -92,35 +85,17 @@ function AlertPreviewCard({
         return <Info size={iconSize} color={iconColor} style={iconStyle} />;
     }
   };
-
   return (
-    <View
-      style={[
-        styles.card,
-        { borderColor: config.color, borderLeftWidth: 4, borderWidth: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 },
-      ]}
-    >
-      <View style={styles.row}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          {renderIcon()}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>{alert.title}</Text>
-            <Text style={styles.cardMessage} numberOfLines={1}>{alert.message}</Text>
-          </View>
-        </View>
-
-        {/* Botón solo si hay acción (alertas) */}
-        {onPressAction ? (
-          <Pressable style={[styles.goButton, loading && { opacity: 0.7 }]} onPress={loading ? undefined : onPressAction}>
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.goButtonText}>YA VOY</Text>
-            )}
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
+    <View style={[styles.card, { borderColor: config.color, borderLeftWidth: 4, borderWidth: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0 }]}>
+       <View style={styles.row}>
+         {renderIcon()}
+         <View style={{ flex: 1 }}>
+           <Text style={styles.cardTitle}>{alert.title}</Text>
+           <Text style={styles.cardMessage} numberOfLines={1}>{alert.message}</Text>
+         </View>
+         <Text style={styles.cardTimestamp}>{alert.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+       </View>
+     </View>
   );
 }
 
@@ -153,9 +128,6 @@ export default function IndexScreen() {
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [alertasNoLeidas, setAlertasNoLeidas] = useState(0);
 
-  // ⬇️ loading por alerta al enviar "YA VOY"
-  const [enviandoYaVoy, setEnviandoYaVoy] = useState<Set<number>>(new Set());
-
   // Funciones para formatear fecha y hora
   const formatFecha = (fecha: string) => {
       const date = new Date(fecha);
@@ -165,95 +137,6 @@ export default function IndexScreen() {
       const date = new Date(fecha);
       return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
   };
-
-  // ⬇️ helper robusto para enviar "YA VOY" probando múltiples endpoints (prioriza el correcto)
-  const sendYaVoyWithFallback = useCallback(
-    async (alerta: Alerta, authHeader: AxiosRequestConfig) => {
-      const attempts: Array<() => Promise<any>> = [
-        // ✅ #0: CORRECTO en tu backend → PUT /alertas/:id?confirmado=true&notas=...
-        async () =>
-          axios.put(
-            `${API_URL}/alertas/${alerta.id}`,
-            null, // sin body
-            {
-              ...authHeader,
-              params: { confirmado: true, notas: 'Ayuda en camino' },
-            }
-          ),
-
-        // (Fallbacks opcionales por si mantienes otros servicios)
-        async () =>
-          axios.post(
-            `${API_URL}/mensajes`,
-            { adulto_mayor_id: alerta.adulto_mayor_id, contenido: 'Ayuda en camino' },
-            authHeader
-          ),
-
-        async () =>
-          axios.post(
-            `${API_URL}/notificaciones/enviar`,
-            {
-              tipo: 'ya_voy',
-              alerta_id: alerta.id,
-              adulto_mayor_id: alerta.adulto_mayor_id,
-              mensaje: 'Ayuda en camino',
-            },
-            authHeader
-          ),
-      ];
-
-      let lastErr: any = null;
-      for (const run of attempts) {
-        try {
-          const res = await run();
-          if (res?.status >= 200 && res?.status < 300) {
-            console.log('✅ YA VOY enviado');
-            return true;
-          }
-        } catch (err: any) {
-          lastErr = err;
-          const status = err?.response?.status;
-          const detail = err?.response?.data?.detail || err?.message;
-          console.warn(`❌ Intento fallido (${status}): ${detail}`);
-          // seguimos probando el siguiente intento
-        }
-      }
-      throw lastErr || new Error('Sin endpoints disponibles para YA VOY');
-    },
-    []
-  );
-
-  // Handler YA VOY
-  const handleYaVoy = useCallback(async (alerta: Alerta) => {
-    if (!user) return;
-    const id = alerta.id;
-    setEnviandoYaVoy(prev => new Set(prev).add(id));
-    try {
-      const token = await user.getIdToken();
-      const authHeader = { headers: { Authorization: `Bearer ${token}` } };
-
-      await sendYaVoyWithFallback(alerta, authHeader);
-
-      alert(`Se informó a ${alerta.nombre_adulto_mayor || 'la persona'}: "Ayuda en camino"`);
-
-      // marcar alerta como confirmada y ajustar contador
-      setAlertas(prev => prev.map(a => (a.id === id ? { ...a, confirmado_por_cuidador: true } : a)));
-      setAlertasNoLeidas(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Error YA VOY:', error);
-      const msg =
-        axios.isAxiosError(error) && (error.response?.data?.detail || error.message)
-          ? (error.response?.data?.detail || error.message)
-          : 'No se pudo enviar la confirmación.';
-      alert(`Error: ${msg}`);
-    } finally {
-      setEnviandoYaVoy(prev => {
-        const copy = new Set(prev);
-        copy.delete(id);
-        return copy;
-      });
-    }
-  }, [user, sendYaVoyWithFallback]);
   
   // Efecto para buscar el perfil del usuario y otros datos cuando está autenticado
   useEffect(() => {
@@ -506,16 +389,11 @@ export default function IndexScreen() {
                                 type: alerta.tipo_alerta === 'ayuda' ? 'warning' : 'error',
                                 title: alerta.tipo_alerta === 'ayuda' ? '¡Solicitud de Ayuda!' : '⚠️ Alerta de Caída',
                                 message: alerta.nombre_adulto_mayor
-                                    ? `${alerta.nombre_adulto_mayor} · ${new Date(alerta.timestamp_alerta).toLocaleTimeString('es-ES', {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })}`
-                                    : new Date(alerta.timestamp_alerta).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+                                    ? `${alerta.nombre_adulto_mayor}${alerta.notas ? ' - ' + alerta.notas : ''}`
+                                    : alerta.notas || 'Sin descripción',
                                 timestamp: new Date(alerta.timestamp_alerta),
                                 read: alerta.confirmado_por_cuidador !== null
                             }}
-                            onPressAction={() => handleYaVoy(alerta)}
-                            loading={enviandoYaVoy.has(alerta.id)}
                         />
                     ))}
                   </>
@@ -546,7 +424,6 @@ export default function IndexScreen() {
                               timestamp: new Date(rec.fecha_hora_programada),
                               read: rec.estado !== 'pendiente'
                           }}
-                          // NO pasamos onPressAction => sin botón YA VOY
                       />
                   ))}
                 </>
@@ -985,21 +862,5 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
-  },
-
-  goButton: {
-    backgroundColor: '#ef4444',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignSelf: 'center',
-    marginLeft: 10,
-  },
-  goButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
   },
 });

@@ -27,6 +27,7 @@ export default function ConfiguracionScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [config, setConfig] = useState<Partial<AlertConfig>>({}); // Usamos Partial para estado inicial
+  const [originalConfig, setOriginalConfig] = useState<Partial<AlertConfig>>({}); // Para detectar cambios
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
@@ -45,12 +46,14 @@ export default function ConfiguracionScreen() {
       const response = await axios.get<AlertConfig>(`${API_URL}/configuracion/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setConfig({
+      const loadedConfig = {
           ...response.data,
           // Aseguramos que los campos null sean strings vacíos para los TextInput
           numero_whatsapp: response.data.numero_whatsapp ?? '',
           email_secundario: response.data.email_secundario ?? '',
-      });
+      };
+      setConfig(loadedConfig);
+      setOriginalConfig(loadedConfig); // Guardar estado original
       console.log('Configuración obtenida:', response.data);
     } catch (err) {
       console.error('Error al obtener configuración:', err);
@@ -150,10 +153,14 @@ export default function ConfiguracionScreen() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Si se activó WhatsApp y hay un número, enviar mensaje de bienvenida
-      if (config.notificar_whatsapp && config.numero_whatsapp) {
+      // Solo enviar mensaje de bienvenida si WhatsApp se ACABA DE ACTIVAR
+      const wasWhatsAppDisabled = !originalConfig.notificar_whatsapp;
+      const isWhatsAppNowEnabled = config.notificar_whatsapp;
+      const shouldSendWelcome = wasWhatsAppDisabled && isWhatsAppNowEnabled && config.numero_whatsapp;
+
+      if (shouldSendWelcome) {
         try {
-          console.log('Enviando mensaje de bienvenida por WhatsApp...');
+          console.log('Enviando mensaje de bienvenida por WhatsApp (primera activación)...');
           await axios.post(
             `${WHATSAPP_WEBHOOK_URL}/send-template`,
             {
@@ -175,8 +182,15 @@ export default function ConfiguracionScreen() {
         }
       }
 
+      // Actualizar configuración original después de guardar
+      setOriginalConfig({
+        ...config,
+        numero_whatsapp: config.numero_whatsapp || null,
+        email_secundario: config.email_secundario || null,
+      });
+
       Alert.alert('Éxito', 'Configuración guardada correctamente.' +
-        (config.notificar_whatsapp && config.numero_whatsapp ? ' Se envió un mensaje de bienvenida a tu WhatsApp!' : ''));
+        (shouldSendWelcome ? ' Se envió un mensaje de bienvenida a tu WhatsApp!' : ''));
       // Opcional: Volver a cargar la config para confirmar, o simplemente asumir éxito
       // fetchConfig();
     } catch (err) {

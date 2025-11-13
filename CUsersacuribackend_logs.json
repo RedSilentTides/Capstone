@@ -1,0 +1,101 @@
+2025-11-13 00:07:07 ??  No hay cuidadores con WhatsApp habilitado para adulto mayor 2
+2025-11-13 00:07:07 INFO:     169.254.169.126:14584 - "POST /alertas HTTP/1.1" 201 Created
+2025-11-13 00:07:11 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:11 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:11 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:11 INFO:     169.254.169.126:14598 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:13 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/usuarios/yo
+2025-11-13 00:07:13 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/recordatorios
+2025-11-13 00:07:13 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/solicitudes-cuidado/recibidas
+2025-11-13 00:07:13 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:13 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:13 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:13 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:13 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:13 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:13 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:13 INFO:     169.254.169.126:14614 - "GET /usuarios/yo HTTP/1.1" 200 OK
+2025-11-13 00:07:13 Obteniendo recordatorios para usuario_id: 3, rol: cuidador, filtro adulto_mayor_id: None
+2025-11-13 00:07:13 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:13 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:13 ? Encontrados 0 recordatorios.
+2025-11-13 00:07:13 Obteniendo solicitudes recibidas para usuario 3
+2025-11-13 00:07:13 INFO:     169.254.169.126:14640 - "GET /recordatorios HTTP/1.1" 200 OK
+2025-11-13 00:07:13 ? Encontradas 0 solicitudes recibidas.
+2025-11-13 00:07:13 INFO:     169.254.169.126:14628 - "GET /solicitudes-cuidado/recibidas HTTP/1.1" 200 OK
+2025-11-13 00:07:13 INFO:     169.254.169.126:14652 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:16 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/usuarios/yo
+2025-11-13 00:07:16 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:16 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/recordatorios
+2025-11-13 00:07:16 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/solicitudes-cuidado/recibidas
+2025-11-13 00:07:16 Buscando perfil para firebase_uid: 3VRkthIw3JcOR6pnQODF3U1Gq4B3
+2025-11-13 00:07:16 Buscando perfil para firebase_uid: 3VRkthIw3JcOR6pnQODF3U1Gq4B3
+2025-11-13 00:07:16 Buscando perfil para firebase_uid: 3VRkthIw3JcOR6pnQODF3U1Gq4B3
+2025-11-13 00:07:16 ? Perfil encontrado para 3VRkthIw3JcOR6pnQODF3U1Gq4B3, rol: adulto_mayor
+2025-11-13 00:07:16 Buscando perfil para firebase_uid: 3VRkthIw3JcOR6pnQODF3U1Gq4B3
+2025-11-13 00:07:16 ? Perfil encontrado para 3VRkthIw3JcOR6pnQODF3U1Gq4B3, rol: adulto_mayor
+2025-11-13 00:07:16 INFO:     169.254.169.126:25134 - "GET /usuarios/yo HTTP/1.1" 200 OK
+2025-11-13 00:07:16 ? Perfil encontrado para 3VRkthIw3JcOR6pnQODF3U1Gq4B3, rol: adulto_mayor
+2025-11-13 00:07:16 ? Perfil encontrado para 3VRkthIw3JcOR6pnQODF3U1Gq4B3, rol: adulto_mayor
+2025-11-13 00:07:16 Obteniendo recordatorios para usuario_id: 4, rol: adulto_mayor, filtro adulto_mayor_id: None
+2025-11-13 00:07:16 Obteniendo solicitudes recibidas para usuario 4
+2025-11-13 00:07:16 ? Encontradas 2 solicitudes recibidas.
+2025-11-13 00:07:16 ? Adulto mayor Anaeli (id: 2) consultando sus recordatorios
+2025-11-13 00:07:16 INFO:     169.254.169.126:25162 - "GET /solicitudes-cuidado/recibidas HTTP/1.1" 200 OK
+2025-11-13 00:07:16 INFO:     169.254.169.126:25136 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:16 ? Encontrados 0 recordatorios.
+2025-11-13 00:07:16 INFO:     169.254.169.126:25150 - "GET /recordatorios HTTP/1.1" 200 OK
+2025-11-13 00:07:16 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/usuarios/yo
+2025-11-13 00:07:16 Buscando perfil para firebase_uid: 3VRkthIw3JcOR6pnQODF3U1Gq4B3
+2025-11-13 00:07:16 ? Perfil encontrado para 3VRkthIw3JcOR6pnQODF3U1Gq4B3, rol: adulto_mayor
+2025-11-13 00:07:16 INFO:     169.254.169.126:25164 - "GET /usuarios/yo HTTP/1.1" 200 OK
+2025-11-13 00:07:16 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:16 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:16 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:16 INFO:     169.254.169.126:25166 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:21 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:21 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:21 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:21 INFO:     169.254.169.126:25178 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:26 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:26 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:26 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:26 INFO:     169.254.169.126:38086 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:31 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:31 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:31 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:31 INFO:     169.254.169.126:38100 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:35 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/adultos-mayores
+2025-11-13 00:07:35 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:35 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:35 Obteniendo adultos mayores para cuidador 3
+2025-11-13 00:07:35 ? Encontrados 1 adultos mayores.
+2025-11-13 00:07:35 INFO:     169.254.169.126:46816 - "GET /adultos-mayores HTTP/1.1" 200 OK
+2025-11-13 00:07:36 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:36 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:36 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:36 INFO:     169.254.169.126:46822 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:37 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/recordatorios?adulto_mayor_id=2
+2025-11-13 00:07:37 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/usuarios/yo
+2025-11-13 00:07:37 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:37 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:37 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:37 Obteniendo recordatorios para usuario_id: 3, rol: cuidador, filtro adulto_mayor_id: 2
+2025-11-13 00:07:37 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:37 INFO:     169.254.169.126:46832 - "GET /usuarios/yo HTTP/1.1" 200 OK
+2025-11-13 00:07:37 ? Encontrados 0 recordatorios.
+2025-11-13 00:07:37 INFO:     169.254.169.126:46824 - "GET /recordatorios?adulto_mayor_id=2 HTTP/1.1" 200 OK
+2025-11-13 00:07:38 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/recordatorios?adulto_mayor_id=2
+2025-11-13 00:07:38 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:38 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:38 Obteniendo recordatorios para usuario_id: 3, rol: cuidador, filtro adulto_mayor_id: 2
+2025-11-13 00:07:38 ? Encontrados 0 recordatorios.
+2025-11-13 00:07:38 INFO:     169.254.169.126:46848 - "GET /recordatorios?adulto_mayor_id=2 HTTP/1.1" 200 OK
+2025-11-13 00:07:41 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-13 00:07:41 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:41 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:41 INFO:     169.254.169.126:46856 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-13 00:07:46 Buscando perfil para firebase_uid: 83YRuObxqFf90BURyIFHqGuPDCh2
+2025-11-13 00:07:46 ? Perfil encontrado para 83YRuObxqFf90BURyIFHqGuPDCh2, rol: cuidador
+2025-11-13 00:07:46 INFO:     169.254.169.126:7194 - "GET /alertas HTTP/1.1" 200 OK
+[]

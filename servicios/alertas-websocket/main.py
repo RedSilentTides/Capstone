@@ -63,6 +63,8 @@ origins = [
     "http://localhost:8081",
     "http://localhost:8080",
     "http://localhost:19006",
+    "https://mivigilia.cl",
+    "https://app.mivigilia.cl",
     "exp://",  # Para Expo Go
 ]
 
@@ -258,8 +260,8 @@ async def websocket_alertas(websocket: WebSocket, token: str = None):
                 "rol": user[4]
             }
 
-        # Solo permitir cuidadores
-        if user_info["rol"] != "cuidador":
+        # Permitir cuidadores y adultos mayores
+        if user_info["rol"] not in ["cuidador", "adulto_mayor"]:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
@@ -396,6 +398,93 @@ async def get_stats():
         "connected_firebase_uids": manager.get_connected_users(),
         "timestamp": datetime.now().isoformat()
     }
+
+
+@app.post("/internal/notify-confirmation")
+async def notify_confirmation(
+    confirmation_data: dict,
+    x_internal_key: str = Header(None, alias="X-Internal-Key")
+):
+    """
+    Endpoint interno para notificar confirmaciones de alertas (YA VOY) a través de WebSocket.
+    Envía mensaje al adulto mayor cuando un cuidador confirma que va en camino.
+    """
+    # Verificar clave interna
+    INTERNAL_KEY = os.environ.get("INTERNAL_API_KEY", "").strip()
+
+    if INTERNAL_KEY and x_internal_key and x_internal_key.strip() != INTERNAL_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Clave interna inválida"
+        )
+
+    # Obtener el firebase_uid del adulto mayor
+    adulto_mayor_id = confirmation_data.get("adulto_mayor_id")
+
+    if not adulto_mayor_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="adulto_mayor_id es requerido"
+        )
+
+    try:
+        # Obtener el firebase_uid del adulto mayor desde la BD
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT u.firebase_uid, u.nombre
+                    FROM adultos_mayores am
+                    JOIN usuarios u ON am.usuario_id = u.id
+                    WHERE am.id = :adulto_mayor_id
+                """),
+                {"adulto_mayor_id": adulto_mayor_id}
+            )
+            adulto_mayor = result.fetchone()
+
+        if not adulto_mayor:
+            return {
+                "success": False,
+                "message": "Adulto mayor no encontrado",
+                "notified": False
+            }
+
+        firebase_uid = adulto_mayor[0]
+        nombre_adulto = adulto_mayor[1]
+
+        # Construir mensaje de notificación
+        mensaje = {
+            "tipo": "confirmacion_alerta",
+            "titulo": confirmation_data.get("titulo", "💙 Tu cuidador está en camino"),
+            "mensaje": confirmation_data.get("mensaje", "Ayuda en camino"),
+            "cuidador_nombre": confirmation_data.get("cuidador_nombre"),
+            "alerta_id": confirmation_data.get("alerta_id"),
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Enviar mensaje al adulto mayor
+        success = await manager.send_personal_message(mensaje, firebase_uid)
+
+        if success:
+            print(f"📢 Confirmación 'YA VOY' enviada a {nombre_adulto} ({firebase_uid})")
+            return {
+                "success": True,
+                "message": f"Confirmación enviada a {nombre_adulto}",
+                "notified": True
+            }
+        else:
+            print(f"⚠️  {nombre_adulto} ({firebase_uid}) no está conectado al WebSocket")
+            return {
+                "success": True,
+                "message": f"{nombre_adulto} no está conectado",
+                "notified": False
+            }
+
+    except Exception as e:
+        print(f"❌ Error al notificar confirmación: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al enviar notificación: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
