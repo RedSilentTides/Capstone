@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import axios, { AxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
-import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, CalendarCheck } from 'lucide-react-native';
+import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, CalendarCheck, Camera } from 'lucide-react-native';
 
 // URL del backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -21,13 +21,15 @@ type UserProfile = {
   rol: 'cuidador' | 'administrador' | 'adulto_mayor';
 };
 type AlertType = 'info' | 'warning' | 'error' | 'success';
-interface AlertItem { 
-  id: string; 
+interface AlertItem {
+  id: string;
   type: AlertType;
-  title: string; 
-  message: string; 
-  timestamp: Date; 
+  title: string;
+  message: string;
+  timestamp: Date;
   read: boolean;
+  hasSnapshot?: boolean;
+  alertaIdNumerico?: number;
 }
 interface Recordatorio {
     id: number;
@@ -127,7 +129,10 @@ function AlertPreviewCard({
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
           {renderIcon()}
           <View style={{ flex: 1 }}>
-            <Text style={styles.cardTitle}>{alert.title}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.cardTitle}>{alert.title}</Text>
+              {alert.hasSnapshot && <Camera size={14} color="#7c3aed" />}
+            </View>
             <Text style={styles.cardMessage} numberOfLines={1}>{alert.message}</Text>
           </View>
         </View>
@@ -671,7 +676,9 @@ export default function IndexScreen() {
                                       })}`
                                     : new Date(alerta.timestamp_alerta).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
                                 timestamp: new Date(alerta.timestamp_alerta),
-                                read: alerta.confirmado_por_cuidador !== null
+                                read: alerta.confirmado_por_cuidador !== null,
+                                hasSnapshot: alerta.detalles_adicionales?.snapshot_url ? true : false,
+                                alertaIdNumerico: alerta.id
                             }}
                             onPressAction={() => handleYaVoy(alerta)}
                             loading={enviandoYaVoy.has(alerta.id)}

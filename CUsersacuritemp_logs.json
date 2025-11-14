@@ -1,101 +1,101 @@
-2025-11-14 00:00:27 ? Notificaci?n WebSocket enviada: 1 cuidadores conectados
-2025-11-14 00:00:27 ??  WhatsApp fall? para 56937805787: 400
-2025-11-14 00:00:27 ? Emails enviados: 1/1 destinatarios
-2025-11-14 00:00:27 INFO:     169.254.169.126:54798 - "POST /eventos-caida/notificar HTTP/1.1" 201 Created
-2025-11-14 00:00:28 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
-2025-11-14 00:00:28 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
-2025-11-14 00:00:28 ? Token interno verificado correctamente
-2025-11-14 00:00:28 ? ?Alerta de Ca?da Recibida! Dispositivo: 1
-2025-11-14 00:00:28 ? Alerta de ca?da registrada en BD con ID: 107 (adulto_mayor_id: 1)
-2025-11-14 00:00:28 ? Notificaci?n WebSocket enviada: 1 cuidadores conectados
-2025-11-14 00:00:28 ??  WhatsApp fall? para 56937805787: 400
-2025-11-14 00:00:28 ? Emails enviados: 1/1 destinatarios
-2025-11-14 00:00:28 INFO:     169.254.169.126:54810 - "POST /eventos-caida/notificar HTTP/1.1" 201 Created
-2025-11-14 00:01:18 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
-2025-11-14 00:01:18 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:18 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:18 INFO:     169.254.169.126:43340 - "GET /alertas HTTP/1.1" 200 OK
-2025-11-14 00:01:19 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
-2025-11-14 00:01:19 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/solicitudes-cuidado/recibidas
-2025-11-14 00:01:19 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/recordatorios
-2025-11-14 00:01:19 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:19 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:19 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:19 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:19 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:19 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:19 Obteniendo recordatorios para usuario_id: 1, rol: cuidador, filtro adulto_mayor_id: None
-2025-11-14 00:01:19 Obteniendo solicitudes recibidas para usuario 1
-2025-11-14 00:01:19 ? Encontrados 2 recordatorios.
-2025-11-14 00:01:19 ? Encontradas 0 solicitudes recibidas.
-2025-11-14 00:01:19 INFO:     169.254.169.126:43364 - "GET /recordatorios HTTP/1.1" 200 OK
-2025-11-14 00:01:19 INFO:     169.254.169.126:43358 - "GET /solicitudes-cuidado/recibidas HTTP/1.1" 200 OK
-2025-11-14 00:01:19 INFO:     169.254.169.126:43354 - "GET /alertas HTTP/1.1" 200 OK
-2025-11-14 00:01:46 POST 201 https://api-backend-687053793381.southamerica-west1.run.app/eventos-caida/notificar
-2025-11-14 00:01:46 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
-2025-11-14 00:01:47 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
-2025-11-14 00:01:47 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
-2025-11-14 00:01:47 ? Token interno verificado correctamente
-2025-11-14 00:01:47 ? ?Alerta de Ca?da Recibida! Dispositivo: 1
-2025-11-14 00:01:47 ? Alerta de ca?da registrada en BD con ID: 108 (adulto_mayor_id: 1)
-2025-11-14 00:01:47 ? Notificaci?n WebSocket enviada: 1 cuidadores conectados
-2025-11-14 00:01:47 ??  WhatsApp fall? para 56937805787: 400
-2025-11-14 00:01:47 ? Emails enviados: 1/1 destinatarios
-2025-11-14 00:01:47 INFO:     169.254.169.126:34664 - "POST /eventos-caida/notificar HTTP/1.1" 201 Created
-2025-11-14 00:01:47 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
-2025-11-14 00:01:47 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
-2025-11-14 00:01:47 ? Token interno verificado correctamente
-2025-11-14 00:01:47 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
-2025-11-14 00:01:47 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
-2025-11-14 00:01:47 INFO:     169.254.169.126:34672 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
-2025-11-14 00:01:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
-2025-11-14 00:01:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:50 INFO:     169.254.169.126:34676 - "GET /alertas HTTP/1.1" 200 OK
-2025-11-14 00:01:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/solicitudes-cuidado/recibidas
-2025-11-14 00:01:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/recordatorios
-2025-11-14 00:01:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
-2025-11-14 00:01:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:50 Obteniendo recordatorios para usuario_id: 1, rol: cuidador, filtro adulto_mayor_id: None
-2025-11-14 00:01:50 Obteniendo solicitudes recibidas para usuario 1
-2025-11-14 00:01:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:50 ? Encontradas 0 solicitudes recibidas.
-2025-11-14 00:01:50 ? Encontrados 2 recordatorios.
-2025-11-14 00:01:50 INFO:     169.254.169.126:34678 - "GET /recordatorios HTTP/1.1" 200 OK
-2025-11-14 00:01:50 INFO:     169.254.169.126:34680 - "GET /solicitudes-cuidado/recibidas HTTP/1.1" 200 OK
-2025-11-14 00:01:50 INFO:     169.254.169.126:34696 - "GET /alertas HTTP/1.1" 200 OK
-2025-11-14 00:01:51 OPTIONS 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas/108?confirmado=true&notas=Ayuda+en+camino
-2025-11-14 00:01:51 INFO:     169.254.169.126:46402 - "OPTIONS /alertas/108?confirmado=true&notas=Ayuda+en+camino HTTP/1.1" 200 OK
-2025-11-14 00:01:51 PUT 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas/108?confirmado=true&notas=Ayuda+en+camino
-2025-11-14 00:01:52 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:01:52 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:01:52 ??  1 tokens de desarrollo detectados (modo local)
-2025-11-14 00:01:52    Las notificaciones se mostrar?n localmente en esos dispositivos
-2025-11-14 00:01:52 ? Notificaci?n 'YA VOY' enviada a Alexander (adulto mayor)
-2025-11-14 00:01:52 ??  Adulto mayor no conectado al WebSocket
-2025-11-14 00:01:52 INFO:     169.254.169.126:46418 - "PUT /alertas/108?confirmado=true&notas=Ayuda+en+camino HTTP/1.1" 200 OK
-2025-11-14 00:02:35 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/usuarios/yo
-2025-11-14 00:02:35 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/solicitudes-cuidado/recibidas
-2025-11-14 00:02:35 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
-2025-11-14 00:02:35 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/recordatorios
-2025-11-14 00:02:35 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:02:35 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:02:35 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:02:35 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
-2025-11-14 00:02:35 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:02:35 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:02:35 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:02:35 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
-2025-11-14 00:02:35 INFO:     169.254.169.126:39362 - "GET /usuarios/yo HTTP/1.1" 200 OK
-2025-11-14 00:02:35 Obteniendo recordatorios para usuario_id: 1, rol: cuidador, filtro adulto_mayor_id: None
-2025-11-14 00:02:35 Obteniendo solicitudes recibidas para usuario 1
-2025-11-14 00:02:35 ? Encontrados 2 recordatorios.
-2025-11-14 00:02:35 ? Encontradas 0 solicitudes recibidas.
-2025-11-14 00:02:35 INFO:     169.254.169.126:39390 - "GET /recordatorios HTTP/1.1" 200 OK
-2025-11-14 00:02:35 INFO:     169.254.169.126:39372 - "GET /solicitudes-cuidado/recibidas HTTP/1.1" 200 OK
-2025-11-14 00:02:35 INFO:     169.254.169.126:39378 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-14 02:18:20 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:20 ? Token interno verificado correctamente
+2025-11-14 02:18:20 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:18:20 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:18:20 INFO:     169.254.169.126:61986 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:18:31 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:18:31 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:31 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:31 ? Token interno verificado correctamente
+2025-11-14 02:18:31 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:18:31 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:18:31 INFO:     169.254.169.126:11442 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:18:34 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:18:34 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:34 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:34 ? Token interno verificado correctamente
+2025-11-14 02:18:34 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:18:34 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:18:34 INFO:     169.254.169.126:27558 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:18:35 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:18:35 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:35 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:35 ? Token interno verificado correctamente
+2025-11-14 02:18:35 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:18:35 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:18:35 INFO:     169.254.169.126:27574 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:18:37 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:18:37 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:37 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:37 ? Token interno verificado correctamente
+2025-11-14 02:18:37 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:18:37 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:18:37 INFO:     169.254.169.126:27580 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:18:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/solicitudes-cuidado/recibidas
+2025-11-14 02:18:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/recordatorios
+2025-11-14 02:18:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/usuarios/yo
+2025-11-14 02:18:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/alertas
+2025-11-14 02:18:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
+2025-11-14 02:18:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
+2025-11-14 02:18:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
+2025-11-14 02:18:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
+2025-11-14 02:18:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
+2025-11-14 02:18:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
+2025-11-14 02:18:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
+2025-11-14 02:18:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
+2025-11-14 02:18:50 Obteniendo solicitudes recibidas para usuario 1
+2025-11-14 02:18:50 Obteniendo recordatorios para usuario_id: 1, rol: cuidador, filtro adulto_mayor_id: None
+2025-11-14 02:18:50 INFO:     169.254.169.126:37654 - "GET /usuarios/yo HTTP/1.1" 200 OK
+2025-11-14 02:18:50 ? Encontradas 0 solicitudes recibidas.
+2025-11-14 02:18:50 ? Encontrados 2 recordatorios.
+2025-11-14 02:18:50 INFO:     169.254.169.126:37618 - "GET /solicitudes-cuidado/recibidas HTTP/1.1" 200 OK
+2025-11-14 02:18:50 INFO:     169.254.169.126:37638 - "GET /alertas HTTP/1.1" 200 OK
+2025-11-14 02:18:50 INFO:     169.254.169.126:37620 - "GET /recordatorios HTTP/1.1" 200 OK
+2025-11-14 02:18:50 GET 200 https://api-backend-687053793381.southamerica-west1.run.app/usuarios/yo
+2025-11-14 02:18:50 Buscando perfil para firebase_uid: KweEiHhKPZbapIdSnH6zGKQYPXf2
+2025-11-14 02:18:50 ? Perfil encontrado para KweEiHhKPZbapIdSnH6zGKQYPXf2, rol: cuidador
+2025-11-14 02:18:50 INFO:     169.254.169.126:37656 - "GET /usuarios/yo HTTP/1.1" 200 OK
+2025-11-14 02:18:58 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:18:58 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:58 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:18:58 ? Token interno verificado correctamente
+2025-11-14 02:18:58 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:18:58 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:18:58 INFO:     169.254.169.126:47644 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:19:05 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:19:05 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:05 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:05 ? Token interno verificado correctamente
+2025-11-14 02:19:05 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:19:05 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:19:05 INFO:     169.254.169.126:53508 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:19:11 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:19:11 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:11 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:11 ? Token interno verificado correctamente
+2025-11-14 02:19:11 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:19:11 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:19:11 INFO:     169.254.169.126:53522 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:19:12 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:19:12 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:12 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:12 ? Token interno verificado correctamente
+2025-11-14 02:19:12 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:19:12 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:19:12 INFO:     169.254.169.126:61496 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:19:17 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:19:17 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:17 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:17 ? Token interno verificado correctamente
+2025-11-14 02:19:17 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:19:17 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:19:17 INFO:     169.254.169.126:61510 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:19:20 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
+2025-11-14 02:19:20 ? DEBUG: Token recibido: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:20 ? DEBUG: Token esperado: '2O7F6HfduZUKon5IxPwYeghAX3RlpViC' (len: 32)
+2025-11-14 02:19:20 ? Token interno verificado correctamente
+2025-11-14 02:19:20 Buscando o creando dispositivo con identificador_hw: bec1a2c71301
+2025-11-14 02:19:20 ? Dispositivo encontrado con ID num?rico: 1, Adulto Mayor ID: 1
+2025-11-14 02:19:20 INFO:     169.254.169.126:61526 - "POST /dispositivos/get-or-create HTTP/1.1" 200 OK
+2025-11-14 02:19:36 POST 200 https://api-backend-687053793381.southamerica-west1.run.app/dispositivos/get-or-create
 []

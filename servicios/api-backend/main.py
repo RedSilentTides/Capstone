@@ -993,8 +993,21 @@ def get_eventos_caida(
                     "offset": skip
                 }).fetchall()
 
-            print(f"✅ Encontrados {len(results)} eventos de caída.")
-            eventos = [dict(row._mapping) for row in results]
+            eventos = []
+            for row in results:
+                evento_dict = dict(row._mapping)
+
+                # Convertir detalles_adicionales de string JSON a dict si es necesario
+                detalles = evento_dict.get('detalles_adicionales')
+                if detalles and isinstance(detalles, str):
+                    try:
+                        evento_dict['detalles_adicionales'] = json.loads(detalles)
+                    except Exception as e:
+                        # Si falla la conversión, dejar como None para evitar errores
+                        evento_dict['detalles_adicionales'] = None
+
+                eventos.append(evento_dict)
+
             return eventos
 
     except Exception as e:
