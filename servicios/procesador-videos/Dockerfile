@@ -1,7 +1,7 @@
-# Usar una imagen base de Python con soporte para OpenCV
+# Usar una imagen base de Python con soporte para OpenCV y MediaPipe
 FROM python:3.11-slim
 
-# Instalar dependencias del sistema necesarias para OpenCV y librerías multimedia
+# Instalar dependencias del sistema necesarias para OpenCV, MediaPipe y librerías multimedia
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     ffmpeg \
+    libgstreamer1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Establecer directorio de trabajo
@@ -21,10 +22,8 @@ COPY requirements.txt .
 # Instalar dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código de la aplicación y archivos necesarios
+# Copiar el código de la aplicación
 COPY main.py .
-COPY classes.txt .
-COPY yolov8s.pt .
 
 # Pre-compilar el código Python
 RUN python -m compileall .

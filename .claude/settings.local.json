@@ -31,7 +31,10 @@
       "Bash(timeout /t 10 /nobreak)",
       "Bash(npm run:*)",
       "Bash(npx expo:*)",
-      "Bash(firebase deploy:*)"
+      "Bash(firebase deploy:*)",
+      "Bash(C:Usersacuritemp_logs.json)",
+      "Bash(timeout /t 30 /nobreak)",
+      "Bash(scp:*)"
     ],
     "deny": [],
     "ask": []

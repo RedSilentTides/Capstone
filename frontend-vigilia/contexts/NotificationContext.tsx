@@ -119,15 +119,34 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       return;
     }
 
-    if (!isAuthenticated || !user || (userRole !== 'cuidador' && userRole !== 'adulto_mayor')) {
-      // Desconectar si el usuario no está autenticado o no es cuidador/adulto mayor
+    if (!isAuthenticated || !user) {
+      // Desconectar si el usuario no está autenticado
       resetWebSocketService();
       setIsWebSocketConnected(false);
       return;
     }
 
+    // Esperar a que se cargue el rol antes de conectar
+    if (!userRole) {
+      console.log('🌐 Esperando carga de userRole antes de conectar WebSocket...');
+      return;
+    }
+
+    // Solo conectar si es cuidador o adulto mayor
+    if (userRole !== 'cuidador' && userRole !== 'adulto_mayor') {
+      console.log('🌐 WebSocket no disponible para rol:', userRole);
+      return;
+    }
+
     console.log('🌐 Inicializando conexión WebSocket...');
     const wsService = getWebSocketService();
+
+    // Evitar reconexión si ya está conectado
+    if (wsService.isConnected) {
+      console.log('🔌 WebSocket ya está conectado, reutilizando conexión');
+      setIsWebSocketConnected(true);
+      return;
+    }
 
     // Conectar WebSocket
     wsService.connect(user)
@@ -244,14 +263,32 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setIsWebSocketConnected(false);
     });
 
-    // Cleanup al desmontar
+    // Cleanup al desmontar - SOLO desconectar si user o isAuthenticated cambian
     return () => {
+      console.log('🧹 Cleanup de WebSocket - solo removiendo handlers');
       removeMessageHandler();
       removeCloseHandler();
-      resetWebSocketService();
-      setIsWebSocketConnected(false);
+      // NO desconectar aquí - se desconecta solo cuando user/isAuthenticated cambian
     };
   }, [isAuthenticated, user, userRole]);
+
+  // Cleanup separado para desconectar cuando el usuario se desautentica
+  useEffect(() => {
+    // Si el usuario se desautentica, desconectar WebSocket
+    if (!isAuthenticated || !user) {
+      resetWebSocketService();
+      setIsWebSocketConnected(false);
+    }
+
+    // Cleanup al cambiar de usuario o logout
+    return () => {
+      if (!isAuthenticated || !user) {
+        console.log('🔌 Desconectando WebSocket por logout/cambio de usuario');
+        resetWebSocketService();
+        setIsWebSocketConnected(false);
+      }
+    };
+  }, [isAuthenticated, user]);
 
   // Registrar el dispositivo para notificaciones cuando el usuario esté autenticado
   useEffect(() => {

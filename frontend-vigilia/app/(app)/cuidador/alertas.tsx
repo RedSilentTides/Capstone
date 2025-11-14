@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart, Camera } from 'lucide-react-native';
 import { useAuth } from '../../../contexts/AuthContext';
 import CustomHeader from '../../../components/CustomHeader';
 
@@ -23,6 +23,8 @@ interface Alerta {
   read: boolean;
   icon?: string;
   adulto_mayor_nombre?: string;
+  hasSnapshot?: boolean;  // Indica si tiene foto disponible
+  alertaIdNumerico?: number;  // ID numérico de la alerta para obtener snapshot
 }
 
 interface EventoCaida {
@@ -78,7 +80,15 @@ const alertConfig: Record<AlertType, { color: string; bgColor: string }> = {
 };
 
 // Componente AlertCard mejorado
-function AlertCard({ alert, onDismiss }: { alert: Alerta; onDismiss: (id: string) => void }) {
+function AlertCard({
+  alert,
+  onDismiss,
+  onViewSnapshot
+}: {
+  alert: Alerta;
+  onDismiss: (id: string) => void;
+  onViewSnapshot?: (alertaId: number) => void;
+}) {
   const config = alertConfig[alert.type];
 
   const renderIcon = () => {
@@ -123,7 +133,18 @@ function AlertCard({ alert, onDismiss }: { alert: Alerta; onDismiss: (id: string
               <Text style={[styles.badgeText, { color: config.color }]}>{alert.adulto_mayor_nombre}</Text>
             </View>
           )}
-          <Text style={styles.timestamp}>{formattedDate} • {formattedTime}</Text>
+          <View style={styles.rowBetween}>
+            <Text style={styles.timestamp}>{formattedDate} • {formattedTime}</Text>
+            {alert.hasSnapshot && alert.alertaIdNumerico && onViewSnapshot && (
+              <Pressable
+                style={styles.snapshotButton}
+                onPress={() => onViewSnapshot(alert.alertaIdNumerico!)}
+              >
+                <Camera size={16} color="#7c3aed" />
+                <Text style={styles.snapshotButtonText}>Ver foto</Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -222,6 +243,9 @@ export default function AlertasScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedRecordatorio, setSelectedRecordatorio] = useState<Recordatorio | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const [isSnapshotModalVisible, setIsSnapshotModalVisible] = useState(false);
+  const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
 
   // Funciones para persistir recordatorios leídos
   const RECORDATORIOS_LEIDOS_KEY = 'recordatorios_leidos';
@@ -263,15 +287,22 @@ export default function AlertasScreen() {
   }, [cargarRecordatoriosLeidos]);
 
   const convertirEventosACaidas = (eventos: EventoCaida[]): Alerta[] => {
-    return eventos.map(evento => ({
-      id: `caida-${evento.id}`,
-      type: 'caida' as AlertType,
-      title: '¡Alerta de Caída Detectada!',
-      message: `Detectado por ${evento.nombre_dispositivo || 'dispositivo'}`,
-      timestamp: new Date(evento.timestamp_alerta),
-      read: evento.confirmado_por_cuidador !== null,
-      adulto_mayor_nombre: evento.nombre_adulto_mayor || undefined,
-    }));
+    return eventos.map(evento => {
+      // Verificar si tiene snapshot en detalles_adicionales
+      const hasSnapshot = evento.detalles_adicionales?.snapshot_url ? true : false;
+
+      return {
+        id: `caida-${evento.id}`,
+        type: 'caida' as AlertType,
+        title: '¡Alerta de Caída Detectada!',
+        message: `Detectado por ${evento.nombre_dispositivo || 'dispositivo'}`,
+        timestamp: new Date(evento.timestamp_alerta),
+        read: evento.confirmado_por_cuidador !== null,
+        adulto_mayor_nombre: evento.nombre_adulto_mayor || undefined,
+        hasSnapshot,
+        alertaIdNumerico: evento.id,
+      };
+    });
   };
 
   const convertirAlertasAyuda = (alertasAyuda: AlertaAyuda[]): Alerta[] => {
@@ -401,6 +432,41 @@ export default function AlertasScreen() {
     setRefreshing(true);
     fetchAlertas(true);
   };
+
+  // Función para obtener snapshot de una alerta
+  const handleViewSnapshot = useCallback(async (alertaId: number) => {
+    if (!user) return;
+
+    setIsLoadingSnapshot(true);
+    setIsSnapshotModalVisible(true);
+    setSnapshotUrl(null);
+
+    try {
+      const token = await user.getIdToken();
+      const response = await axios.get(`${API_URL}/alertas/${alertaId}/snapshot`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data?.snapshot_url) {
+        setSnapshotUrl(response.data.snapshot_url);
+        console.log('[SNAPSHOT] URL obtenida exitosamente');
+      } else {
+        console.error('[SNAPSHOT] No se recibió URL en la respuesta');
+        setError('No se pudo obtener la imagen');
+        setIsSnapshotModalVisible(false);
+      }
+    } catch (err) {
+      console.error('[SNAPSHOT] Error al obtener snapshot:', err);
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        setError('Esta alerta no tiene foto disponible');
+      } else {
+        setError('Error al cargar la imagen');
+      }
+      setIsSnapshotModalVisible(false);
+    } finally {
+      setIsLoadingSnapshot(false);
+    }
+  }, [user]);
 
   // Función para descartar una alerta
   const handleDismiss = (id: string) => {
@@ -592,6 +658,7 @@ export default function AlertasScreen() {
                     key={alerta.id}
                     alert={alerta}
                     onDismiss={handleDismiss}
+                    onViewSnapshot={handleViewSnapshot}
                   />
                 ))}
               </View>
@@ -744,6 +811,83 @@ export default function AlertasScreen() {
                 </View>
               </>
             )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Modal de Snapshot de Caída */}
+      <Modal
+        visible={isSnapshotModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setIsSnapshotModalVisible(false);
+          setSnapshotUrl(null);
+        }}
+      >
+        <Pressable
+          style={styles.snapshotModalOverlay}
+          onPress={() => {
+            setIsSnapshotModalVisible(false);
+            setSnapshotUrl(null);
+          }}
+        >
+          <Pressable
+            style={styles.snapshotModalContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.snapshotModalHeader}>
+              <View style={styles.snapshotHeaderLeft}>
+                <Camera size={24} color="#7c3aed" style={{ marginRight: 8 }} />
+                <Text style={styles.snapshotModalTitle}>Foto de la Caída</Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setIsSnapshotModalVisible(false);
+                  setSnapshotUrl(null);
+                }}
+                style={styles.snapshotCloseButton}
+              >
+                <X size={24} color="#6b7280" />
+              </Pressable>
+            </View>
+
+            <View style={styles.snapshotImageContainer}>
+              {isLoadingSnapshot ? (
+                <View style={styles.snapshotLoadingContainer}>
+                  <ActivityIndicator size="large" color="#7c3aed" />
+                  <Text style={styles.snapshotLoadingText}>Cargando imagen...</Text>
+                </View>
+              ) : snapshotUrl ? (
+                <Image
+                  source={{ uri: snapshotUrl }}
+                  style={styles.snapshotImage}
+                  resizeMode="contain"
+                  onError={(error) => {
+                    console.error('[SNAPSHOT] Error al cargar imagen:', error.nativeEvent.error);
+                    setError('Error al cargar la imagen');
+                    setIsSnapshotModalVisible(false);
+                  }}
+                />
+              ) : (
+                <View style={styles.snapshotErrorContainer}>
+                  <AlertTriangle size={48} color="#ef4444" />
+                  <Text style={styles.snapshotErrorText}>No se pudo cargar la imagen</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.snapshotModalFooter}>
+              <Pressable
+                style={styles.snapshotCloseButtonLarge}
+                onPress={() => {
+                  setIsSnapshotModalVisible(false);
+                  setSnapshotUrl(null);
+                }}
+              >
+                <Text style={styles.snapshotCloseButtonText}>Cerrar</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1133,6 +1277,112 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCloseButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Estilos para botón de snapshot
+  snapshotButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3e8ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4,
+  },
+  snapshotButtonText: {
+    color: '#7c3aed',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // Estilos para modal de snapshot
+  snapshotModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  snapshotModalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 600,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  snapshotModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  snapshotHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  snapshotModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  snapshotCloseButton: {
+    padding: 4,
+  },
+  snapshotImageContainer: {
+    minHeight: 400,
+    maxHeight: 600,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+  },
+  snapshotImage: {
+    width: '100%',
+    height: '100%',
+  },
+  snapshotLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  snapshotLoadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  snapshotErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  snapshotErrorText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#ef4444',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  snapshotModalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  snapshotCloseButtonLarge: {
+    backgroundColor: '#7c3aed',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  snapshotCloseButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',

@@ -8,8 +8,9 @@ import json
 import firebase_admin
 from firebase_admin import credentials, auth
 from firebase_admin.exceptions import FirebaseError
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
+from google.cloud import storage
 
 # --- Configuración de Firebase ---
 try:
@@ -226,6 +227,7 @@ class CaidaDetectada(BaseModel):
     dispositivo_id: int
     timestamp_caida: datetime
     url_video_almacenado: str
+    snapshot_url: str | None = None  # URL del snapshot de la caída
 # --- FIN: NUEVO MODELO ---
 
 class SolicitudCuidadoCreate(BaseModel):
@@ -1046,14 +1048,21 @@ async def notificar_evento_caida(
                 cuidadores = db_conn.execute(query_cuidadores, {"adulto_mayor_id": adulto_mayor_id}).fetchall()
 
                 # Insertar en la tabla alertas con tipo_alerta='caida'
+                # Incluimos snapshot_url en detalles_adicionales (JSON)
+                detalles = {}
+                if evento.snapshot_url:
+                    detalles["snapshot_url"] = evento.snapshot_url
+
                 query = text("""
                     INSERT INTO alertas (
                         adulto_mayor_id, tipo_alerta, dispositivo_id,
-                        timestamp_alerta, url_video_almacenado, confirmado_por_cuidador
+                        timestamp_alerta, url_video_almacenado, confirmado_por_cuidador,
+                        detalles_adicionales
                     )
                     VALUES (
                         :adulto_mayor_id, 'caida', :dispositivo_id,
-                        :timestamp_alerta, :url_video_almacenado, NULL
+                        :timestamp_alerta, :url_video_almacenado, NULL,
+                        :detalles_adicionales
                     )
                     RETURNING id
                 """)
@@ -1061,7 +1070,8 @@ async def notificar_evento_caida(
                     "adulto_mayor_id": adulto_mayor_id,
                     "dispositivo_id": evento.dispositivo_id,
                     "timestamp_alerta": evento.timestamp_caida,
-                    "url_video_almacenado": evento.url_video_almacenado
+                    "url_video_almacenado": evento.url_video_almacenado,
+                    "detalles_adicionales": json.dumps(detalles) if detalles else None
                 }).fetchone()
 
                 if not result:
@@ -1133,6 +1143,8 @@ async def notificar_evento_caida(
                             "url_video_almacenado": evento.url_video_almacenado,
                             "dispositivo_id": evento.dispositivo_id
                         }
+                        if evento.snapshot_url:
+                            websocket_payload["snapshot_url"] = evento.snapshot_url
                         ws_response = requests.post(
                             f"{websocket_service_url}/internal/notify-alert",
                             json=websocket_payload,
@@ -2650,19 +2662,43 @@ def actualizar_alerta(
             )
 
         # Actualizar la alerta
-        query_update = text("""
-            UPDATE alertas
-            SET confirmado_por_cuidador = :confirmado, notas = :notas
-            WHERE id = :alerta_id
-            RETURNING id, adulto_mayor_id, tipo_alerta, timestamp_alerta,
-                      dispositivo_id, url_video_almacenado,
-                      confirmado_por_cuidador, notas, detalles_adicionales, fecha_registro
-        """)
-        result = db_conn.execute(query_update, {
-            "confirmado": confirmado,
-            "notas": notas,
-            "alerta_id": alerta_id
-        }).fetchone()
+        # Si se confirma "Ya voy", agregar timestamp de cooldown extendido (5 minutos)
+        if confirmado and notas:
+            cooldown_until = datetime.utcnow() + timedelta(minutes=5)
+            detalles_update_json = json.dumps({"cooldown_extendido_hasta": cooldown_until.isoformat()})
+
+            query_update = text("""
+                UPDATE alertas
+                SET confirmado_por_cuidador = :confirmado,
+                    notas = :notas,
+                    detalles_adicionales = COALESCE(detalles_adicionales, '{}'::jsonb) || CAST(:detalles_update AS jsonb)
+                WHERE id = :alerta_id
+                RETURNING id, adulto_mayor_id, tipo_alerta, timestamp_alerta,
+                          dispositivo_id, url_video_almacenado,
+                          confirmado_por_cuidador, notas, detalles_adicionales, fecha_registro
+            """)
+            result = db_conn.execute(query_update, {
+                "confirmado": confirmado,
+                "notas": notas,
+                "alerta_id": alerta_id,
+                "detalles_update": detalles_update_json
+            }).fetchone()
+        else:
+            query_update = text("""
+                UPDATE alertas
+                SET confirmado_por_cuidador = :confirmado,
+                    notas = :notas
+                WHERE id = :alerta_id
+                RETURNING id, adulto_mayor_id, tipo_alerta, timestamp_alerta,
+                          dispositivo_id, url_video_almacenado,
+                          confirmado_por_cuidador, notas, detalles_adicionales, fecha_registro
+            """)
+            result = db_conn.execute(query_update, {
+                "confirmado": confirmado,
+                "notas": notas,
+                "alerta_id": alerta_id
+            }).fetchone()
+
         db_conn.commit()
 
         if not result:
@@ -2754,5 +2790,173 @@ def actualizar_alerta(
             **result._mapping,
             nombre_adulto_mayor=nombre_adulto_mayor
         )
+
+
+@app.get("/alertas/{alerta_id}/snapshot")
+def obtener_snapshot_alerta(
+    alerta_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Obtiene URL firmada del snapshot de una alerta de caída.
+    La URL es válida por 1 hora.
+    """
+    user_info = read_users_me(current_user)
+
+    with engine.connect() as db_conn:
+        # Verificar que el usuario tiene acceso a esta alerta
+        if user_info.rol == 'cuidador':
+            query_check = text("""
+                SELECT a.detalles_adicionales, a.adulto_mayor_id
+                FROM alertas a
+                JOIN cuidadores_adultos_mayores cam ON a.adulto_mayor_id = cam.adulto_mayor_id
+                WHERE a.id = :alerta_id AND cam.usuario_id = :usuario_id
+            """)
+            result = db_conn.execute(query_check, {
+                "alerta_id": alerta_id,
+                "usuario_id": user_info.id
+            }).fetchone()
+        elif user_info.rol == 'adulto_mayor':
+            query_check = text("""
+                SELECT a.detalles_adicionales, a.adulto_mayor_id
+                FROM alertas a
+                JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                WHERE a.id = :alerta_id AND am.usuario_id = :usuario_id
+            """)
+            result = db_conn.execute(query_check, {
+                "alerta_id": alerta_id,
+                "usuario_id": user_info.id
+            }).fetchone()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permiso para acceder a esta alerta."
+            )
+
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Alerta no encontrada o sin acceso."
+            )
+
+        detalles = result[0] if result[0] else {}
+
+        # Extraer snapshot_url de detalles_adicionales
+        snapshot_url = detalles.get("snapshot_url")
+
+        if not snapshot_url:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Esta alerta no tiene snapshot disponible."
+            )
+
+        # Verificar que la URL es de GCS
+        if not snapshot_url.startswith("gs://"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="URL de snapshot inválida."
+            )
+
+        try:
+            # Parsear gs://bucket/path
+            parts = snapshot_url.replace("gs://", "").split("/", 1)
+            if len(parts) != 2:
+                raise ValueError("Formato de URL inválido")
+
+            bucket_name = parts[0]
+            blob_path = parts[1]
+
+            # Generar URL firmada
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_path)
+
+            # URL válida por 1 hora
+            signed_url = blob.generate_signed_url(
+                version="v4",
+                expiration=timedelta(hours=1),
+                method="GET"
+            )
+
+            return {
+                "snapshot_url": signed_url,
+                "expires_in_seconds": 3600
+            }
+
+        except Exception as e:
+            print(f"❌ Error al generar URL firmada: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al obtener snapshot: {str(e)}"
+            )
+
+
+@app.post("/dispositivos/check-cooldown")
+def verificar_cooldown_extendido(
+    dispositivo_id: int,
+    adulto_mayor_id: int,
+    x_internal_token: str = Header(None, alias="X-Internal-Token")
+):
+    """
+    Endpoint interno para que el edge verifique si hay cooldown extendido activo.
+    Retorna True si hay cooldown activo, False si puede crear nueva alerta.
+    """
+    # Verificar autenticación interna
+    internal_token = os.environ.get("INTERNAL_API_KEY", "").strip()
+    if not internal_token or x_internal_token != internal_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token interno inválido"
+        )
+
+    with engine.connect() as db_conn:
+        # Buscar alerta reciente con cooldown extendido activo
+        query = text("""
+            SELECT detalles_adicionales->>'cooldown_extendido_hasta' as cooldown_hasta
+            FROM alertas
+            WHERE adulto_mayor_id = :adulto_mayor_id
+              AND dispositivo_id = :dispositivo_id
+              AND confirmado_por_cuidador = TRUE
+              AND detalles_adicionales->>'cooldown_extendido_hasta' IS NOT NULL
+            ORDER BY timestamp_alerta DESC
+            LIMIT 1
+        """)
+
+        result = db_conn.execute(query, {
+            "adulto_mayor_id": adulto_mayor_id,
+            "dispositivo_id": dispositivo_id
+        }).fetchone()
+
+        if not result or not result[0]:
+            return {
+                "cooldown_activo": False,
+                "puede_crear_alerta": True
+            }
+
+        # Verificar si el cooldown sigue activo
+        try:
+            cooldown_hasta = datetime.fromisoformat(result[0])
+            ahora = datetime.utcnow()
+
+            if ahora < cooldown_hasta:
+                segundos_restantes = int((cooldown_hasta - ahora).total_seconds())
+                return {
+                    "cooldown_activo": True,
+                    "puede_crear_alerta": False,
+                    "cooldown_expira_en_segundos": segundos_restantes,
+                    "cooldown_expira_en": cooldown_hasta.isoformat()
+                }
+            else:
+                return {
+                    "cooldown_activo": False,
+                    "puede_crear_alerta": True
+                }
+        except Exception as e:
+            print(f"⚠️  Error al parsear cooldown_hasta: {e}")
+            return {
+                "cooldown_activo": False,
+                "puede_crear_alerta": True
+            }
+
 
 # --- FIN DE ENDPOINTS ---

@@ -6,19 +6,26 @@ import requests
 from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
 from google.cloud import storage
-from ultralytics import YOLO
 from datetime import datetime, timezone
+from collections import deque
+import mediapipe as mp
 
 # --- CONFIGURACIÓN ---
 PROJECT_ID = os.environ.get("GCP_PROJECT", "composed-apogee-475623-p6")
-BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "https://api-backend-wsqxyy54za-uc.a.run.app")
-# Intentar múltiples nombres de variable por si Cloud Run hace alguna transformación
+BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "https://api-backend-687053793381.southamerica-west1.run.app")
 INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY") or os.environ.get("internal-api-key") or os.environ.get("internal_api_key") or "CAMBIA_ESTA_CLAVE_SECRETA_POR_DEFECTO_TEST2"
+
+# Parámetros de detección de caídas
+TORSO_TILT_DEG = 55      # inclinación torso (0° vertical, 90° horizontal)
+HIP_Y_RATIO = 0.75       # cadera por debajo del 75% de la altura de la imagen
+ASPECT_THRESHOLD = 1.6   # ancho/alto bbox > 1.6 → acostado
+FRAMES_CONFIRM = 8       # frames consecutivos para confirmar la alerta (reducido para videos cortos)
+SMOOTH_WINDOW = 3        # suavizado de señales (media móvil)
 
 print(f"🔍 PROCESADOR DEBUG: INTERNAL_API_KEY = '{INTERNAL_API_KEY}' (len: {len(INTERNAL_API_KEY)})")
 print(f"🔍 PROCESADOR DEBUG: Todas las variables: {sorted(os.environ.keys())}")
 
-app = FastAPI(title="Procesador de Video - VigilIA")
+app = FastAPI(title="Procesador de Video - VigilIA (MediaPipe)")
 
 # --- MODELOS DE DATOS (Pydantic) ---
 class PubSubMessage(BaseModel):
@@ -28,20 +35,125 @@ class PubSubMessage(BaseModel):
 class PubSubRequest(BaseModel):
     message: PubSubMessage
 
+# --- MEDIAPIPE SETUP ---
+print("Inicializando MediaPipe Pose...")
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+
+pose = mp_pose.Pose(
+    static_image_mode=False,
+    model_complexity=1,
+    smooth_landmarks=True,
+    enable_segmentation=False,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+print("✅ MediaPipe Pose inicializado.")
+
+# --- UTILIDADES PARA DETECCIÓN DE CAÍDAS ---
+
+def angle_from_vertical(p_top, p_bottom):
+    """Ángulo (grados) del vector p_top->p_bottom respecto a la vertical. 0° = vertical, 90° = horizontal."""
+    if p_top is None or p_bottom is None:
+        return None
+    (x1, y1) = p_top
+    (x2, y2) = p_bottom
+    dx = x2 - x1
+    dy = y2 - y1
+    if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+        return None
+    return math.degrees(math.atan2(abs(dx), max(1e-6, dy)))
+
+def midpoint(p1, p2):
+    if p1 is None or p2 is None:
+        return None
+    return ((p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2)
+
+def to_px(lm, W, H):
+    return (int(lm.x * W), int(lm.y * H)), lm.visibility
+
+def extract_pose_metrics(frame, results):
+    """
+    Devuelve:
+      - mid_shoulder, mid_hip (tuplas x,y o None)
+      - torso_angle (float o None)
+      - hip_y_ratio (float o None, relativo a alto del frame)
+      - bbox_from_landmarks (x1,y1,x2,y2) o None
+    """
+    if not results or not results.pose_landmarks:
+        return None, None, None, None, None
+
+    H, W = frame.shape[:2]
+    lms = results.pose_landmarks.landmark
+
+    # IDs de hombros y caderas en MediaPipe
+    LS, RS, LH, RH = 11, 12, 23, 24
+
+    try:
+        ls, v_ls = to_px(lms[LS], W, H)
+        rs, v_rs = to_px(lms[RS], W, H)
+        lh, v_lh = to_px(lms[LH], W, H)
+        rh, v_rh = to_px(lms[RH], W, H)
+    except Exception:
+        return None, None, None, None, None
+
+    VMIN = 0.4
+    ls_xy = ls if v_ls >= VMIN else None
+    rs_xy = rs if v_rs >= VMIN else None
+    lh_xy = lh if v_lh >= VMIN else None
+    rh_xy = rh if v_rh >= VMIN else None
+
+    mid_shoulder = midpoint(ls_xy, rs_xy)
+    mid_hip = midpoint(lh_xy, rh_xy)
+
+    torso_angle = angle_from_vertical(mid_shoulder, mid_hip) if (mid_shoulder and mid_hip) else None
+    hip_y_ratio = (mid_hip[1] / float(H)) if mid_hip else None
+
+    # BBox aproximada a partir de landmarks visibles
+    xs, ys = [], []
+    for lm in lms:
+        if lm.visibility >= 0.4:
+            x, y = int(lm.x * W), int(lm.y * H)
+            xs.append(x)
+            ys.append(y)
+
+    bbox = None
+    if xs and ys:
+        pad = 20
+        x1, y1 = max(0, min(xs) - pad), max(0, min(ys) - pad)
+        x2, y2 = min(W - 1, max(xs) + pad), min(H - 1, max(ys) + pad)
+        if x2 > x1 and y2 > y1:
+            bbox = (x1, y1, x2, y2)
+
+    return mid_shoulder, mid_hip, torso_angle, hip_y_ratio, bbox
+
+def save_snapshot_to_gcs(frame, bucket_name, hardware_id):
+    """Guarda el snapshot del frame en GCS y retorna la URL."""
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{hardware_id}/snapshots/fall_{ts}.jpg"
+
+        # Guardar localmente primero
+        local_path = f"/tmp/fall_{ts}.jpg"
+        cv2.imwrite(local_path, frame)
+
+        # Subir a GCS
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(filename)
+        blob.upload_from_filename(local_path)
+
+        # Limpiar archivo local
+        os.remove(local_path)
+
+        url = f"gs://{bucket_name}/{filename}"
+        print(f"💾 Snapshot guardado en: {url}")
+        return url
+    except Exception as e:
+        print(f"❌ Error al guardar snapshot: {e}")
+        return None
+
 # --- LÓGICA DE PROCESAMIENTO DE VIDEO ---
-
-print("Cargando modelo YOLOv8s...")
-model = YOLO('yolov8s.pt')
-print("✅ Modelo cargado.")
-
-classnames = []
-try:
-    with open('classes.txt', 'r') as f:
-        classnames = f.read().splitlines()
-    print("✅ Archivo de clases cargado.")
-except FileNotFoundError:
-    print("❌ Advertencia: No se encontró 'classes.txt'. La detección de 'person' podría fallar.")
-    classnames = ['person']
 
 def download_video_from_gcs(bucket_name: str, file_name: str) -> str:
     storage_client = storage.Client()
@@ -53,35 +165,101 @@ def download_video_from_gcs(bucket_name: str, file_name: str) -> str:
     print("✅ Video descargado.")
     return local_video_path
 
-def process_video_for_fall_detection(video_path: str) -> bool:
+def process_video_for_fall_detection(video_path: str, bucket_name: str, hardware_id: str) -> tuple[bool, str | None]:
+    """
+    Procesa el video usando MediaPipe para detectar caídas.
+    Retorna (fall_detected: bool, snapshot_url: str | None)
+    """
     cap = cv2.VideoCapture(video_path)
     fall_detected = False
-    print(f"Iniciando procesamiento de video: {video_path}")
+    snapshot_url = None
+
+    fall_counter = 0
+    alert_active = False
+    snapshot_taken = False
+
+    # Buffers para suavizar
+    tilt_hist = deque(maxlen=SMOOTH_WINDOW)
+    hip_hist = deque(maxlen=SMOOTH_WINDOW)
+    ar_hist = deque(maxlen=SMOOTH_WINDOW)
+
+    print(f"Iniciando procesamiento de video con MediaPipe: {video_path}")
+    frame_count = 0
+
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        results = model(frame, verbose=False)
-        for info in results:
-            for box in info.boxes:
-                class_id = int(box.cls[0])
-                if classnames[class_id].lower() == 'person' and box.conf[0] > 0.80:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    height = y2 - y1
-                    width = x2 - x1
-                    if width > height:
-                        print(f"🚨 ¡Posible caída detectada! Ancho: {width}, Alto: {height}")
-                        fall_detected = True
-                        break
-            if fall_detected:
-                break
-        if fall_detected:
-            break
-    cap.release()
-    print(f"Resultado del análisis: {'Caída detectada' if fall_detected else 'No se detectó caída'}")
-    return fall_detected
 
-# --- NUEVA FUNCIÓN ---
+        frame_count += 1
+        H, W = frame.shape[:2]
+
+        # MediaPipe Pose
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        try:
+            results = pose.process(rgb)
+        except Exception:
+            results = None
+
+        # Métricas
+        mid_shoulder, mid_hip, torso_angle, hip_y_ratio, bbox = extract_pose_metrics(frame, results)
+
+        # Señales de caída
+        pose_signals = []
+
+        if torso_angle is not None:
+            tilt_hist.append(torso_angle)
+            tilt_smooth = sum(tilt_hist) / len(tilt_hist)
+            if tilt_smooth > TORSO_TILT_DEG:
+                pose_signals.append("tilt")
+
+        if hip_y_ratio is not None:
+            hip_hist.append(hip_y_ratio)
+            hip_smooth = sum(hip_hist) / len(hip_hist)
+            if hip_smooth > HIP_Y_RATIO:
+                pose_signals.append("hip")
+
+        # Aspect ratio del bbox
+        if bbox is not None:
+            x1, y1, x2, y2 = bbox
+            w = x2 - x1
+            h = y2 - y1
+            if h > 0:
+                ar = w / float(h)
+                ar_hist.append(ar)
+                ar_smooth = sum(ar_hist) / len(ar_hist)
+                if ar_smooth > ASPECT_THRESHOLD:
+                    pose_signals.append("aspect")
+
+        # ¿Señal de caída en este frame?
+        frame_has_fall_signal = len(pose_signals) >= 2  # Al menos 2 señales
+
+        # Histeresis temporal
+        prev_alert = alert_active
+        fall_counter += 1 if frame_has_fall_signal else -1
+        fall_counter = max(0, fall_counter)
+        alert_active = fall_counter >= FRAMES_CONFIRM
+
+        # Si se confirma la caída y no hemos tomado snapshot
+        if alert_active and not prev_alert:
+            fall_detected = True
+            print(f"🚨 ¡Caída detectada en frame {frame_count}! Señales: {pose_signals}")
+
+        # Tomar snapshot cuando se confirma la caída
+        if alert_active and not snapshot_taken:
+            snapshot_url = save_snapshot_to_gcs(frame, bucket_name, hardware_id)
+            snapshot_taken = True
+
+        # Si ya detectamos caída y tomamos snapshot, podemos salir
+        if fall_detected and snapshot_taken:
+            break
+
+    cap.release()
+    print(f"Resultado del análisis: {'Caída detectada' if fall_detected else 'No se detectó caída'} (procesados {frame_count} frames)")
+    return fall_detected, snapshot_url
+
+# --- FUNCIONES DE BACKEND ---
+
 def get_or_create_device_id(hardware_id: str) -> dict:
     """
     Llama al backend para obtener o crear un ID numérico para un dispositivo
@@ -112,7 +290,7 @@ def get_or_create_device_id(hardware_id: str) -> dict:
         print(f"❌ Error al comunicarse con el backend para obtener el ID del dispositivo: {e}")
         raise HTTPException(status_code=502, detail=f"Error al comunicarse con el backend: {e}")
 
-def notify_backend(dispositivo_id: int, adulto_mayor_id: int | None, url_video: str):
+def notify_backend(dispositivo_id: int, adulto_mayor_id: int | None, url_video: str, snapshot_url: str | None):
     """Notifica al backend API sobre el evento de caída."""
     endpoint = f"{BACKEND_API_URL}/eventos-caida/notificar"
     headers = {
@@ -125,7 +303,11 @@ def notify_backend(dispositivo_id: int, adulto_mayor_id: int | None, url_video: 
         "url_video_almacenado": url_video
     }
 
-    # Si tenemos el adulto_mayor_id, también lo enviamos para mejorar el contexto
+    # Agregar snapshot URL si está disponible
+    if snapshot_url:
+        payload["snapshot_url"] = snapshot_url
+
+    # Si tenemos el adulto_mayor_id, también lo enviamos
     if adulto_mayor_id:
         payload["adulto_mayor_id"] = adulto_mayor_id
         print(f"Enviando notificación de caída al backend para el dispositivo ID: {dispositivo_id}, Adulto Mayor ID: {adulto_mayor_id}")
@@ -144,7 +326,7 @@ def notify_backend(dispositivo_id: int, adulto_mayor_id: int | None, url_video: 
 
 @app.get("/")
 def read_root():
-    return {"status": "Procesador de Video está en línea"}
+    return {"status": "Procesador de Video (MediaPipe) está en línea", "version": "2.0-mediapipe"}
 
 @app.post("/", status_code=204)
 async def process_video_event(request: PubSubRequest = Body(...)):
@@ -162,37 +344,34 @@ async def process_video_event(request: PubSubRequest = Body(...)):
 
     print(f"📬 Evento recibido para el archivo: gs://{bucket_name}/{file_name}")
 
-    # --- LÓGICA DE EXTRACCIÓN DE ID MODIFICADA ---
+    # Extraer ID de hardware
     try:
-        # El ID de hardware es la primera parte de la ruta del archivo
         hardware_id = file_name.split('/')[0]
         if not hardware_id:
             raise ValueError("ID de hardware vacío en la ruta del archivo.")
     except (IndexError, ValueError) as e:
         print(f"❌ No se pudo extraer el ID de hardware de la ruta: {file_name}. Error: {e}")
-        return # Terminar exitosamente para que Pub/Sub no reintente
+        return
 
     # 1. Obtener el ID numérico del dispositivo y el adulto_mayor_id desde el backend
     try:
         device_info = get_or_create_device_id(hardware_id)
         dispositivo_id_numerico = device_info["id"]
-        adulto_mayor_id = device_info.get("adulto_mayor_id")  # Puede ser None
+        adulto_mayor_id = device_info.get("adulto_mayor_id")
     except HTTPException as e:
-        # Si no se puede contactar al backend, no podemos continuar.
-        # El error ya se ha logueado. Devolvemos 500 para que Pub/Sub pueda reintentar.
         raise HTTPException(status_code=500, detail=f"Fallo al obtener ID del backend: {e.detail}")
 
     # 2. Descargar el video
     local_video_path = download_video_from_gcs(bucket_name, file_name)
 
-    # 3. Procesar el video
-    fall_detected = process_video_for_fall_detection(local_video_path)
+    # 3. Procesar el video con MediaPipe
+    fall_detected, snapshot_url = process_video_for_fall_detection(local_video_path, bucket_name, hardware_id)
 
     # 4. Si se detecta una caída, notificar al backend
     if fall_detected:
         url_video_almacenado = f"gs://{bucket_name}/{file_name}"
-        notify_backend(dispositivo_id_numerico, adulto_mayor_id, url_video_almacenado)
-        
+        notify_backend(dispositivo_id_numerico, adulto_mayor_id, url_video_almacenado, snapshot_url)
+
     # 5. Limpiar el archivo local
     try:
         os.remove(local_video_path)

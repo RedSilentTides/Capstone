@@ -9,8 +9,7 @@ google-cloud-pubsub
 
 # Procesamiento de video y ML
 opencv-python
-cvzone
-ultralytics
+mediapipe
 
 # Peticiones HTTP
 requests
