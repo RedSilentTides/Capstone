@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, ReactNode } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { User, Lock, Trash2, ChevronRight, Edit, Calendar, MapPin, FileText } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, deleteUser } from 'firebase/auth';
 import { auth as firebaseAuthInstance } from '../../firebaseConfig';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -46,6 +47,7 @@ function MenuItem({ icon, text, children, open, onPress, isDestructive = false }
 export default function ProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { showToast, showConfirm } = useToast();
   const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,21 +93,21 @@ export default function ProfileScreen() {
 
   const handleChangePassword = async () => {
      if (newPassword.length < 6) {
-        Alert.alert("Error", "La nueva contraseña debe tener al menos 6 caracteres.");
+        showToast('error', "Error", "La nueva contraseña debe tener al menos 6 caracteres.");
         return;
     }
      if (newPassword !== confirmNewPassword) {
-        Alert.alert("Error", "Las nuevas contraseñas no coinciden.");
+        showToast('error', "Error", "Las nuevas contraseñas no coinciden.");
         return;
     }
      if (!currentPassword) {
-         Alert.alert("Error", "Ingresa tu contraseña actual para confirmar.");
+         showToast('error', "Error", "Ingresa tu contraseña actual para confirmar.");
          return;
      }
 
     const firebaseUser = firebaseAuthInstance.currentUser;
     if (!firebaseUser || !firebaseUser.email) {
-        Alert.alert("Error", "No se pudo encontrar tu sesión de usuario.");
+        showToast('error', "Error", "No se pudo encontrar tu sesión de usuario.");
         return;
     }
 
@@ -113,7 +115,7 @@ export default function ProfileScreen() {
     try {
         await reauthenticateWithCredential(firebaseUser, credential);
         await updatePassword(firebaseUser, newPassword);
-        Alert.alert("Éxito", "Tu contraseña ha sido actualizada.");
+        showToast('success', "Éxito", "Tu contraseña ha sido actualizada.");
         setOpenPanel(null);
         setCurrentPassword("");
         setNewPassword("");
@@ -126,28 +128,29 @@ export default function ProfileScreen() {
         } else if (error.code === 'auth/too-many-requests') {
              message = "Demasiados intentos fallidos. Intenta más tarde.";
         }
-        Alert.alert("Error al Cambiar Contraseña", message);
+        showToast('error', "Error al Cambiar Contraseña", message);
     }
   };
 
   const handleDeleteAccount = async () => {
        if (!currentPassword) {
-         Alert.alert("Confirmación Requerida", "Ingresa tu contraseña actual para eliminar tu cuenta.");
+         showToast('error', "Confirmación Requerida", "Ingresa tu contraseña actual para eliminar tu cuenta.");
          return;
      }
 
       const firebaseUser = firebaseAuthInstance.currentUser;
       if (!firebaseUser || !firebaseUser.email) {
-        Alert.alert("Error", "Sesión no válida.");
+        showToast('error', "Error", "Sesión no válida.");
         return;
       }
 
-      Alert.alert(
-          "¿Eliminar Cuenta Permanentemente?",
-          "Esta acción no se puede deshacer. Se eliminarán todos tus datos asociados.",
-          [
-              { text: "Cancelar", style: "cancel" },
-              { text: "Eliminar Definitivamente", style: "destructive", onPress: async () => {
+      showConfirm({
+          title: "¿Eliminar Cuenta Permanentemente?",
+          message: "Esta acción no se puede deshacer. Se eliminarán todos tus datos asociados.",
+          cancelText: "Cancelar",
+          confirmText: "Eliminar Definitivamente",
+          destructive: true,
+          onConfirm: async () => {
                   const credential = EmailAuthProvider.credential(firebaseUser.email!, currentPassword);
                   try {
                       await reauthenticateWithCredential(firebaseUser, credential);
@@ -160,7 +163,7 @@ export default function ProfileScreen() {
                           }
                       }
                       await deleteUser(firebaseUser);
-                      Alert.alert("Cuenta Eliminada", "Tu cuenta ha sido eliminada permanentemente.");
+                      showToast('info', "Cuenta Eliminada", "Tu cuenta ha sido eliminada permanentemente.");
                   } catch (error: any) {
                        console.error("Error al eliminar cuenta:", error);
                        let message = "Ocurrió un error al eliminar la cuenta.";
@@ -169,11 +172,10 @@ export default function ProfileScreen() {
                        } else if (error.code === 'auth/too-many-requests') {
                             message = "Demasiados intentos fallidos. Intenta más tarde.";
                        }
-                       Alert.alert("Error al Eliminar Cuenta", message);
+                       showToast('error', "Error al Eliminar Cuenta", message);
                   }
-              }}
-          ]
-      );
+              }
+      });
   };
 
   if (isLoading) {

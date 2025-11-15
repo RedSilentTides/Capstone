@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Pressable,
+    View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable,
     Platform, TextInput, Modal, RefreshControl
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -8,11 +8,22 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import DatePicker from 'react-native-ui-datepicker';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
-import { PlusCircle, Calendar, Clock, Repeat, Trash2, Edit2, X } from 'lucide-react-native';
+
+// Configurar el calendario en español
+LocaleConfig.locales['es'] = {
+    monthNames: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+    monthNamesShort: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+    dayNames: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
+    dayNamesShort: ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'],
+    today: 'Hoy'
+};
+LocaleConfig.defaultLocale = 'es';
+import { PlusCircle, Calendar as CalendarIcon, Clock, Repeat, Trash2, Edit2, X } from 'lucide-react-native';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useToast } from '../../../contexts/ToastContext';
 import CustomHeader from '../../../components/CustomHeader';
 
 
@@ -71,6 +82,7 @@ export default function RecordatoriosScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
     const { user } = useAuth();
+    const { showToast, showConfirm } = useToast();
 
     // Obtenemos los parámetros de la URL (pueden no existir si es un adulto mayor viendo sus propios recordatorios)
     const adultoMayorIdParam = params.adulto_mayor_id ? parseInt(params.adulto_mayor_id as string) : null;
@@ -191,17 +203,17 @@ export default function RecordatoriosScreen() {
 
     const handleAddOrUpdateReminder = async () => {
         if (!user || !currentReminder.titulo || !currentReminder.fecha_hora_programada) {
-            Alert.alert('Error', 'Completa el título y la fecha/hora.');
+            showToast('error', 'Error', 'Completa el título y la fecha/hora.');
             return;
         }
         if (!adultoMayorId) {
-            Alert.alert('Error', 'No se pudo determinar el adulto mayor.');
+            showToast('error', 'Error', 'No se pudo determinar el adulto mayor.');
             return;
         }
 
         const validationError = validateDateTime(currentReminder.fecha_hora_programada);
         if (validationError) {
-            Alert.alert('Error de validación', validationError);
+            showToast('error', 'Error de validación', validationError);
             return;
         }
 
@@ -220,17 +232,17 @@ export default function RecordatoriosScreen() {
         try {
             if (isEditing && currentReminder.id) {
                 await axios.put(`${API_URL}/recordatorios/${currentReminder.id}`, dataToSend, { headers: { Authorization: `Bearer ${token}` } });
-                Alert.alert('Éxito', 'Recordatorio actualizado.');
+                showToast('success', 'Éxito', 'Recordatorio actualizado.');
             } else {
                 await axios.post(`${API_URL}/recordatorios`, dataToSend, { headers: { Authorization: `Bearer ${token}` } });
-                Alert.alert('Éxito', 'Recordatorio creado.');
+                showToast('success', 'Éxito', 'Recordatorio creado.');
             }
             setModalVisible(false);
             fetchRecordatorios();
         } catch (err) {
             console.error('Error al guardar recordatorio:', err);
             const errorMsg = axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Error desconocido';
-            Alert.alert('Error', `No se pudo guardar el recordatorio: ${errorMsg}`);
+            showToast('error', 'Error', `No se pudo guardar el recordatorio: ${errorMsg}`);
         } finally {
             setIsSaving(false);
         }
@@ -239,27 +251,25 @@ export default function RecordatoriosScreen() {
     const handleDeleteReminder = async (id: number) => {
         if (!user) return;
 
-        Alert.alert(
-            "Confirmar Eliminación",
-            "¿Estás seguro de que quieres eliminar este recordatorio?",
-            [
-                { text: "Cancelar", style: "cancel" },
-                {
-                    text: "Eliminar", style: "destructive", onPress: async () => {
-                        try {
-                            const token = await user.getIdToken();
-                            await axios.delete(`${API_URL}/recordatorios/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-                            Alert.alert('Éxito', 'Recordatorio eliminado.');
-                            fetchRecordatorios();
-                        } catch (err) {
-                            console.error('Error al eliminar recordatorio:', err);
-                            const errorMsg = axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Error desconocido';
-                            Alert.alert('Error', `No se pudo eliminar el recordatorio: ${errorMsg}`);
-                        }
-                    }
+        showConfirm({
+            title: "Confirmar Eliminación",
+            message: "¿Estás seguro de que quieres eliminar este recordatorio?",
+            confirmText: "Eliminar",
+            cancelText: "Cancelar",
+            destructive: true,
+            onConfirm: async () => {
+                try {
+                    const token = await user.getIdToken();
+                    await axios.delete(`${API_URL}/recordatorios/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+                    showToast('success', 'Éxito', 'Recordatorio eliminado.');
+                    fetchRecordatorios();
+                } catch (err) {
+                    console.error('Error al eliminar recordatorio:', err);
+                    const errorMsg = axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Error desconocido';
+                    showToast('error', 'Error', `No se pudo eliminar el recordatorio: ${errorMsg}`);
                 }
-            ]
-        );
+            }
+        });
     };
 
     const openAddModal = () => {
@@ -348,7 +358,7 @@ export default function RecordatoriosScreen() {
                         <Text style={styles.reminderDesc}>{recordatorio.descripcion}</Text>
                     )}
                     <View style={styles.reminderRow}>
-                        <Calendar size={14} color="#6b7280" />
+                        <CalendarIcon size={14} color="#6b7280" />
                         <Text style={styles.reminderDetailText}>{formatFecha(recordatorio.fecha_hora_programada)}</Text>
                     </View>
                     <View style={styles.reminderRow}>
@@ -422,7 +432,7 @@ export default function RecordatoriosScreen() {
                 >
                     {recordatorios.length === 0 ? (
                         <View style={styles.emptyContainer}>
-                            <Calendar size={64} color="#9ca3af" />
+                            <CalendarIcon size={64} color="#9ca3af" />
                             <Text style={styles.emptyText}>No hay recordatorios</Text>
                             <Text style={styles.emptySubtext}>
                                 {userProfile?.rol === 'cuidador'
@@ -489,7 +499,7 @@ export default function RecordatoriosScreen() {
                                             style={styles.dateButton}
                                             onPress={() => setShowCalendar(!showCalendar)}
                                         >
-                                            <Calendar size={20} color="#7c3aed" />
+                                            <CalendarIcon size={20} color="#7c3aed" />
                                             <Text style={styles.dateButtonText}>
                                                 {currentReminder.fecha_hora_programada
                                                     ? `${formatFecha(currentReminder.fecha_hora_programada.toISOString())} ${formatHora(currentReminder.fecha_hora_programada.toISOString())}`
@@ -499,67 +509,153 @@ export default function RecordatoriosScreen() {
 
                                         {showCalendar && (
                                             <View style={styles.calendarContainer}>
-                                                <DatePicker
-                                                    mode="single"
-                                                    locale="es"
-                                                    date={currentReminder.fecha_hora_programada ? dayjs(currentReminder.fecha_hora_programada).toDate() : undefined}
-                                                    onChange={(params: any) => {
-                                                        if (params.date) {
-                                                            const selectedDate = new Date(params.date);
-                                                            const currentDateTime = currentReminder.fecha_hora_programada || new Date();
-                                                            selectedDate.setHours(currentDateTime.getHours(), currentDateTime.getMinutes(), 0, 0);
-                                                            setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: selectedDate }));
+                                                <Calendar
+                                                    firstDay={1}
+                                                    current={currentReminder.fecha_hora_programada ? dayjs(currentReminder.fecha_hora_programada).format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD')}
+                                                    markedDates={{
+                                                        [currentReminder.fecha_hora_programada ? dayjs(currentReminder.fecha_hora_programada).format('YYYY-MM-DD') : '']: {
+                                                            selected: true,
+                                                            selectedColor: '#7c3aed',
+                                                            selectedTextColor: '#ffffff'
                                                         }
                                                     }}
-                                                    minDate={dayjs().toDate()}
-                                                    maxDate={dayjs().add(1, 'year').toDate()}
-                                                    selectedItemColor="#7c3aed"
-                                                    calendarTextStyle={{ color: '#111827', fontSize: 14 }}
-                                                    headerTextStyle={{ color: '#7c3aed', fontWeight: 'bold', fontSize: 16 }}
-                                                    weekDaysTextStyle={{ color: '#6b7280', fontWeight: '600', fontSize: 13 }}
-                                                    selectedTextStyle={{ color: '#ffffff', fontWeight: 'bold' }}
-                                                    todayTextStyle={{ color: '#7c3aed', fontWeight: 'bold' }}
-                                                    todayContainerStyle={{ borderColor: '#7c3aed', borderWidth: 1 }}
+                                                    onDayPress={(day) => {
+                                                        const currentDateTime = currentReminder.fecha_hora_programada || new Date();
+                                                        const selectedDate = dayjs(day.dateString)
+                                                            .hour(currentDateTime.getHours())
+                                                            .minute(currentDateTime.getMinutes())
+                                                            .second(0)
+                                                            .millisecond(0)
+                                                            .toDate();
+                                                        setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: selectedDate }));
+                                                    }}
+                                                    minDate={dayjs().format('YYYY-MM-DD')}
+                                                    maxDate={dayjs().add(1, 'year').format('YYYY-MM-DD')}
+                                                    theme={{
+                                                        backgroundColor: '#ffffff',
+                                                        calendarBackground: '#ffffff',
+                                                        textSectionTitleColor: '#6b7280',
+                                                        selectedDayBackgroundColor: '#7c3aed',
+                                                        selectedDayTextColor: '#ffffff',
+                                                        todayTextColor: '#7c3aed',
+                                                        dayTextColor: '#111827',
+                                                        textDisabledColor: '#d1d5db',
+                                                        dotColor: '#7c3aed',
+                                                        selectedDotColor: '#ffffff',
+                                                        arrowColor: '#7c3aed',
+                                                        monthTextColor: '#7c3aed',
+                                                        indicatorColor: '#7c3aed',
+                                                        textDayFontWeight: '400',
+                                                        textMonthFontWeight: 'bold',
+                                                        textDayHeaderFontWeight: '600',
+                                                        textDayFontSize: 14,
+                                                        textMonthFontSize: 16,
+                                                        textDayHeaderFontSize: 13,
+                                                    }}
                                                 />
+
+                                                {/* Indicador visual de fecha seleccionada */}
+                                                {currentReminder.fecha_hora_programada && (
+                                                    <View style={styles.selectedDateIndicator}>
+                                                        <CalendarIcon size={18} color="#7c3aed" />
+                                                        <Text style={styles.selectedDateText}>
+                                                            Fecha seleccionada: {formatFecha(currentReminder.fecha_hora_programada.toISOString())}
+                                                        </Text>
+                                                    </View>
+                                                )}
 
                                                 <View style={styles.timePickerContainer}>
                                                     <Text style={styles.timePickerLabel}>Selecciona la hora:</Text>
-                                                    <View style={styles.timeInputRow}>
-                                                        <TextInput
-                                                            style={styles.timeInput}
-                                                            value={currentReminder.fecha_hora_programada
-                                                                ? String(currentReminder.fecha_hora_programada.getHours()).padStart(2, '0')
-                                                                : '00'}
-                                                            onChangeText={(text) => {
-                                                                const hours = parseInt(text) || 0;
-                                                                if (hours >= 0 && hours < 24) {
+                                                    <View style={styles.timeControlsRow}>
+                                                        {/* Control de Horas */}
+                                                        <View style={styles.timeControl}>
+                                                            <Text style={styles.timeControlLabel}>Hora</Text>
+                                                            <Pressable
+                                                                style={styles.timeControlButton}
+                                                                onPress={() => {
                                                                     const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
-                                                                    newDate.setHours(hours);
+                                                                    const newHours = (newDate.getHours() + 1) % 24;
+                                                                    newDate.setHours(newHours);
                                                                     setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
-                                                                }
-                                                            }}
-                                                            keyboardType="numeric"
-                                                            maxLength={2}
-                                                            placeholder="HH"
-                                                        />
+                                                                }}
+                                                            >
+                                                                <Text style={styles.timeControlButtonText}>+</Text>
+                                                            </Pressable>
+                                                            <TextInput
+                                                                style={styles.timeInput}
+                                                                value={currentReminder.fecha_hora_programada
+                                                                    ? String(currentReminder.fecha_hora_programada.getHours()).padStart(2, '0')
+                                                                    : '00'}
+                                                                onChangeText={(text) => {
+                                                                    const hours = parseInt(text) || 0;
+                                                                    if (hours >= 0 && hours < 24) {
+                                                                        const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                                        newDate.setHours(hours);
+                                                                        setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                                    }
+                                                                }}
+                                                                keyboardType="numeric"
+                                                                maxLength={2}
+                                                                placeholder="HH"
+                                                            />
+                                                            <Pressable
+                                                                style={styles.timeControlButton}
+                                                                onPress={() => {
+                                                                    const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                                    const newHours = (newDate.getHours() - 1 + 24) % 24;
+                                                                    newDate.setHours(newHours);
+                                                                    setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                                }}
+                                                            >
+                                                                <Text style={styles.timeControlButtonText}>-</Text>
+                                                            </Pressable>
+                                                        </View>
+
                                                         <Text style={styles.timeSeparator}>:</Text>
-                                                        <TextInput
-                                                            style={styles.timeInput}
-                                                            value={currentReminder.fecha_hora_programada
-                                                                ? String(currentReminder.fecha_hora_programada.getMinutes()).padStart(2, '0')
-                                                                : '00'}
-                                                            onChangeText={(text) => {
-                                                                const minutes = parseInt(text) || 0;
-                                                                if (minutes >= 0 && minutes < 60) {
+
+                                                        {/* Control de Minutos */}
+                                                        <View style={styles.timeControl}>
+                                                            <Text style={styles.timeControlLabel}>Minutos</Text>
+                                                            <Pressable
+                                                                style={styles.timeControlButton}
+                                                                onPress={() => {
                                                                     const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
-                                                                    newDate.setMinutes(minutes);
+                                                                    const newMinutes = (newDate.getMinutes() + 1) % 60;
+                                                                    newDate.setMinutes(newMinutes);
                                                                     setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
-                                                                }
-                                                            }}
-                                                            keyboardType="numeric"
-                                                            maxLength={2}
-                                                            placeholder="MM"
-                                                        />
+                                                                }}
+                                                            >
+                                                                <Text style={styles.timeControlButtonText}>+</Text>
+                                                            </Pressable>
+                                                            <TextInput
+                                                                style={styles.timeInput}
+                                                                value={currentReminder.fecha_hora_programada
+                                                                    ? String(currentReminder.fecha_hora_programada.getMinutes()).padStart(2, '0')
+                                                                    : '00'}
+                                                                onChangeText={(text) => {
+                                                                    const minutes = parseInt(text) || 0;
+                                                                    if (minutes >= 0 && minutes < 60) {
+                                                                        const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                                        newDate.setMinutes(minutes);
+                                                                        setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                                    }
+                                                                }}
+                                                                keyboardType="numeric"
+                                                                maxLength={2}
+                                                                placeholder="MM"
+                                                            />
+                                                            <Pressable
+                                                                style={styles.timeControlButton}
+                                                                onPress={() => {
+                                                                    const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                                    const newMinutes = (newDate.getMinutes() - 1 + 60) % 60;
+                                                                    newDate.setMinutes(newMinutes);
+                                                                    setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                                }}
+                                                            >
+                                                                <Text style={styles.timeControlButtonText}>-</Text>
+                                                            </Pressable>
+                                                        </View>
                                                     </View>
                                                 </View>
 
@@ -577,42 +673,96 @@ export default function RecordatoriosScreen() {
                                         {/* Diario, Mensual, o Semanal con días: Solo selector de Hora */}
                                         <Text style={styles.modalLabel}>Hora del recordatorio *</Text>
                                         <View style={styles.timePickerContainer}>
-                                            <View style={styles.timeInputRow}>
-                                                <TextInput
-                                                    style={styles.timeInput}
-                                                    value={currentReminder.fecha_hora_programada
-                                                        ? String(currentReminder.fecha_hora_programada.getHours()).padStart(2, '0')
-                                                        : '09'}
-                                                    onChangeText={(text) => {
-                                                        const hours = parseInt(text) || 0;
-                                                        if (hours >= 0 && hours < 24) {
+                                            <View style={styles.timeControlsRow}>
+                                                {/* Control de Horas */}
+                                                <View style={styles.timeControl}>
+                                                    <Text style={styles.timeControlLabel}>Hora</Text>
+                                                    <Pressable
+                                                        style={styles.timeControlButton}
+                                                        onPress={() => {
                                                             const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
-                                                            newDate.setHours(hours);
+                                                            const newHours = (newDate.getHours() + 1) % 24;
+                                                            newDate.setHours(newHours);
                                                             setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
-                                                        }
-                                                    }}
-                                                    keyboardType="numeric"
-                                                    maxLength={2}
-                                                    placeholder="HH"
-                                                />
+                                                        }}
+                                                    >
+                                                        <Text style={styles.timeControlButtonText}>+</Text>
+                                                    </Pressable>
+                                                    <TextInput
+                                                        style={styles.timeInput}
+                                                        value={currentReminder.fecha_hora_programada
+                                                            ? String(currentReminder.fecha_hora_programada.getHours()).padStart(2, '0')
+                                                            : '09'}
+                                                        onChangeText={(text) => {
+                                                            const hours = parseInt(text) || 0;
+                                                            if (hours >= 0 && hours < 24) {
+                                                                const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                                newDate.setHours(hours);
+                                                                setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                            }
+                                                        }}
+                                                        keyboardType="numeric"
+                                                        maxLength={2}
+                                                        placeholder="HH"
+                                                    />
+                                                    <Pressable
+                                                        style={styles.timeControlButton}
+                                                        onPress={() => {
+                                                            const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                            const newHours = (newDate.getHours() - 1 + 24) % 24;
+                                                            newDate.setHours(newHours);
+                                                            setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                        }}
+                                                    >
+                                                        <Text style={styles.timeControlButtonText}>-</Text>
+                                                    </Pressable>
+                                                </View>
+
                                                 <Text style={styles.timeSeparator}>:</Text>
-                                                <TextInput
-                                                    style={styles.timeInput}
-                                                    value={currentReminder.fecha_hora_programada
-                                                        ? String(currentReminder.fecha_hora_programada.getMinutes()).padStart(2, '0')
-                                                        : '00'}
-                                                    onChangeText={(text) => {
-                                                        const minutes = parseInt(text) || 0;
-                                                        if (minutes >= 0 && minutes < 60) {
+
+                                                {/* Control de Minutos */}
+                                                <View style={styles.timeControl}>
+                                                    <Text style={styles.timeControlLabel}>Minutos</Text>
+                                                    <Pressable
+                                                        style={styles.timeControlButton}
+                                                        onPress={() => {
                                                             const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
-                                                            newDate.setMinutes(minutes);
+                                                            const newMinutes = (newDate.getMinutes() + 1) % 60;
+                                                            newDate.setMinutes(newMinutes);
                                                             setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
-                                                        }
-                                                    }}
-                                                    keyboardType="numeric"
-                                                    maxLength={2}
-                                                    placeholder="MM"
-                                                />
+                                                        }}
+                                                    >
+                                                        <Text style={styles.timeControlButtonText}>+</Text>
+                                                    </Pressable>
+                                                    <TextInput
+                                                        style={styles.timeInput}
+                                                        value={currentReminder.fecha_hora_programada
+                                                            ? String(currentReminder.fecha_hora_programada.getMinutes()).padStart(2, '0')
+                                                            : '00'}
+                                                        onChangeText={(text) => {
+                                                            const minutes = parseInt(text) || 0;
+                                                            if (minutes >= 0 && minutes < 60) {
+                                                                const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                                newDate.setMinutes(minutes);
+                                                                setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                            }
+                                                        }}
+                                                        keyboardType="numeric"
+                                                        maxLength={2}
+                                                        placeholder="MM"
+                                                    />
+                                                    <Pressable
+                                                        style={styles.timeControlButton}
+                                                        onPress={() => {
+                                                            const newDate = new Date(currentReminder.fecha_hora_programada || new Date());
+                                                            const newMinutes = (newDate.getMinutes() - 1 + 60) % 60;
+                                                            newDate.setMinutes(newMinutes);
+                                                            setCurrentReminder(prev => ({ ...prev, fecha_hora_programada: newDate }));
+                                                        }}
+                                                    >
+                                                        <Text style={styles.timeControlButtonText}>-</Text>
+                                                    </Pressable>
+                                                </View>
                                             </View>
                                             {selectedDays.length > 0 && (
                                                 <Text style={styles.helperText}>
@@ -1177,5 +1327,66 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: 12,
         fontStyle: 'italic',
+    },
+    timeControlsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        marginBottom: 12,
+    },
+    timeControl: {
+        alignItems: 'center',
+        gap: 8,
+    },
+    timeControlLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#6b7280',
+        marginBottom: 4,
+    },
+    timeControlButton: {
+        backgroundColor: '#7c3aed',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+        elevation: 2,
+    },
+    timeControlButtonText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: 'white',
+    },
+    helperText: {
+        fontSize: 13,
+        color: '#6b7280',
+        textAlign: 'center',
+        marginTop: 8,
+        fontStyle: 'italic',
+    },
+    selectedDateIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f3e8ff',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        marginTop: 16,
+        marginBottom: 8,
+        borderWidth: 2,
+        borderColor: '#7c3aed',
+        gap: 8,
+    },
+    selectedDateText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#7c3aed',
     },
 });

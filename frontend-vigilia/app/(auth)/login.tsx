@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Pressable, Image, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, Image, Platform } from 'react-native';
 import { Link } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../firebaseConfig';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   const onLoginPressed = async () => {
     if (loading) return;
     setLoading(true);
 
     if (!email || !password) {
-        Alert.alert('Error', 'Por favor, ingresa tu correo y contraseña.');
+        showToast('error', 'Error', 'Por favor, ingresa tu correo y contraseña.');
         setLoading(false);
         return;
     }
@@ -23,7 +25,7 @@ export default function LoginScreen() {
       await signInWithEmailAndPassword(auth, email, password);
       // onAuthStateChanged en AuthProvider se encargará de la redirección automáticamente
       // No necesitamos redirigir manualmente aquí para evitar conflictos en iOS
-    } catch (error: any) { 
+    } catch (error: any) {
       console.error('Error en login:', error.code || error.message);
       let friendlyMessage = 'Ocurrió un error al iniciar sesión.';
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -31,7 +33,7 @@ export default function LoginScreen() {
       } else if (error.code === 'auth/invalid-email') {
         friendlyMessage = 'El formato del correo electrónico no es válido.';
       }
-      Alert.alert('Error de Inicio de Sesión', friendlyMessage);
+      showToast('error', 'Error de Inicio de Sesión', friendlyMessage);
     } finally {
       setLoading(false);
     }

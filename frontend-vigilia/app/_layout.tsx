@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { NotificationProvider } from '../contexts/NotificationContext';
+import { ToastProvider } from '../contexts/ToastContext';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -40,7 +41,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <NotificationProvider>
-          <InitialLayout />
+          <ToastProvider>
+            <InitialLayout />
+          </ToastProvider>
         </NotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>

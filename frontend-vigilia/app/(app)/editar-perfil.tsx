@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { User, Calendar, MapPin, FileText } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -29,6 +30,7 @@ type UserProfileData = {
 export default function EditarPerfilScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [userProfile, setUserProfile] = useState<UserProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -92,7 +94,7 @@ export default function EditarPerfilScreen() {
 
   const handleSave = async () => {
     if (!user) {
-        Alert.alert('Error', 'No se encontró tu sesión.');
+        showToast('error', 'Error', 'No se encontró tu sesión.');
         return;
     }
     setIsSaving(true);
@@ -115,7 +117,7 @@ export default function EditarPerfilScreen() {
             await axios.put(`${API_URL}/usuarios/yo`, updateData, config);
         }
 
-        Alert.alert('Éxito', 'Perfil actualizado exitosamente');
+        showToast('success', 'Éxito', 'Perfil actualizado exitosamente');
         router.replace('/');
 
     } catch (err) {
@@ -124,7 +126,7 @@ export default function EditarPerfilScreen() {
             ? err.response?.data?.detail || 'Error al guardar el perfil'
             : 'Error inesperado al guardar';
         setError(errorMessage);
-        Alert.alert('Error', errorMessage);
+        showToast('error', 'Error', errorMessage);
     } finally {
         setIsSaving(false);
     }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Switch, TextInput, Button, Alert, ActivityIndicator, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Switch, TextInput, Button, ActivityIndicator, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
-import { useAuth } from '../../contexts/AuthContext'; 
+import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext'; 
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -26,6 +27,7 @@ interface AlertConfig {
 export default function ConfiguracionScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [config, setConfig] = useState<Partial<AlertConfig>>({}); // Usamos Partial para estado inicial
   const [originalConfig, setOriginalConfig] = useState<Partial<AlertConfig>>({}); // Para detectar cambios
   const [isLoading, setIsLoading] = useState(true);
@@ -77,7 +79,7 @@ export default function ConfiguracionScreen() {
   // Función para enviar mensaje de prueba de WhatsApp
   const handleSendTestWhatsApp = async () => {
     if (!config.numero_whatsapp) {
-      Alert.alert('Error', 'Por favor, ingresa un número de WhatsApp primero.');
+      showToast('error', 'Error', 'Por favor, ingresa un número de WhatsApp primero.');
       return;
     }
 
@@ -101,8 +103,9 @@ export default function ConfiguracionScreen() {
       );
 
       if (response.data.status === 'sent') {
-        Alert.alert(
-          '✅ Mensaje Enviado',
+        showToast(
+          'success',
+          'Mensaje Enviado',
           `Se envió un mensaje de prueba a ${config.numero_whatsapp}. Revisa tu WhatsApp!`
         );
       }
@@ -118,7 +121,7 @@ export default function ConfiguracionScreen() {
         }
       }
 
-      Alert.alert('Error', errorMessage);
+      showToast('error', 'Error', errorMessage);
     } finally {
       setIsSendingTest(false);
     }
@@ -127,7 +130,7 @@ export default function ConfiguracionScreen() {
   // Función para guardar los cambios
   const handleSaveChanges = async () => {
     if (!user) {
-      Alert.alert('Error', 'No se encontró tu sesión.');
+      showToast('error', 'Error', 'No se encontró tu sesión.');
       return;
     }
 
@@ -189,7 +192,7 @@ export default function ConfiguracionScreen() {
         email_secundario: config.email_secundario || null,
       });
 
-      Alert.alert('Éxito', 'Configuración guardada correctamente.' +
+      showToast('success', 'Éxito', 'Configuración guardada correctamente.' +
         (shouldSendWelcome ? ' Se envió un mensaje de bienvenida a tu WhatsApp!' : ''));
       // Opcional: Volver a cargar la config para confirmar, o simplemente asumir éxito
       // fetchConfig();
@@ -199,7 +202,7 @@ export default function ConfiguracionScreen() {
          setError('Tu sesión ha expirado.');
       } else {
          setError('No se pudo guardar la configuración.');
-         Alert.alert('Error', 'No se pudo guardar la configuración. Intenta de nuevo.');
+         showToast('error', 'Error', 'No se pudo guardar la configuración. Intenta de nuevo.');
       }
     } finally {
       setIsSaving(false);

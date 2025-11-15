@@ -35,7 +35,16 @@
       "Bash(C:Usersacuritemp_logs.json)",
       "Bash(timeout /t 30 /nobreak)",
       "Bash(scp:*)",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(npm install:*)",
+      "Bash(firebase hosting:sites:list:*)",
+      "Bash(firebase hosting:channel:list:*)",
+      "Bash(gcloud app describe:*)",
+      "Bash(firebase hosting:sites:get:*)",
+      "Bash(gcloud firebase hosting sites describe:*)",
+      "Bash(nslookup:*)",
+      "Bash(C:Usersacuribackend_logs.txt)",
+      "Bash(gcloud iam service-accounts add-iam-policy-binding:*)"
     ],
     "deny": [],
     "ask": []

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import axios, { AxiosError } from 'axios'; // Importamos AxiosError para el manejo de tipos
 // Añadimos Image e importamos Platform
-import { Alert, Pressable, StyleSheet, Text, TextInput, View, Image, Platform } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, Image, Platform } from 'react-native';
 import { Link, useRouter } from 'expo-router';
+import { useToast } from '../../contexts/ToastContext';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -15,13 +16,14 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   // Renombramos 'tipoCuenta' a 'rol' para coincidir con el backend
   const [rol, setRol] = useState<'cuidador' | 'adulto_mayor'>('cuidador'); // Tipo explícito
+  const { showToast } = useToast();
 
   const onRegisterPressed = async () => {
     if (loading) return;
     setLoading(true);
 
     if (!nombre || !email || password.length < 6) {
-        Alert.alert('Error', 'Por favor, completa todos los campos (contraseña mín. 6 caracteres).');
+        showToast('error', 'Error', 'Por favor, completa todos los campos (contraseña mín. 6 caracteres).');
         setLoading(false);
         return;
     }
@@ -43,27 +45,27 @@ export default function RegisterScreen() {
 
       // Mostrar mensaje de éxito después de la navegación
       setTimeout(() => {
-        Alert.alert('¡Éxito!', 'Usuario registrado correctamente. Ahora puedes iniciar sesión.');
+        showToast('success', '¡Éxito!', 'Usuario registrado correctamente. Ahora puedes iniciar sesión.');
       }, 100);
 
     } catch (error) { // Usamos el manejo de errores mejorado
         let errorMessage = 'Ocurrió un error al registrar. Intenta de nuevo.';
-        let errorData: any = null; 
+        let errorData: any = null;
 
-        if (axios.isAxiosError(error)) { 
+        if (axios.isAxiosError(error)) {
           errorData = error.response?.data;
           // Usamos el 'detail' que envía FastAPI si existe
-          errorMessage = errorData?.detail || error.message || errorMessage; 
+          errorMessage = errorData?.detail || error.message || errorMessage;
           console.error('Error de Axios en registro:', errorData || error.message);
-        } else if (error instanceof Error) { 
+        } else if (error instanceof Error) {
           errorMessage = error.message;
           console.error('Error general en registro:', error.message);
         } else {
           console.error('Error desconocido en registro:', error);
         }
-    
-        Alert.alert('Error de Registro', errorMessage);
-        
+
+        showToast('error', 'Error de Registro', errorMessage);
+
     } finally {
       setLoading(false);
     }

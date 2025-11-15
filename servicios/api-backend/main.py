@@ -351,6 +351,29 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
             detail="No se pudo validar la autenticación.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+async def get_current_user_optional(authorization: str = Header(None)) -> dict | None:
+    """
+    Verifica el token ID de Firebase de forma opcional.
+    Retorna None si no hay Authorization header.
+    """
+    if not authorization:
+        return None
+
+    # Extraer token del header "Bearer <token>"
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+
+    token = parts[1]
+
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token
+    except Exception as e:
+        print(f"Error al verificar token opcional: {e}")
+        return None
+
 # --- FIN DE SEGURIDAD Y AUTENTICACIÓN ---
 
 # --- Helper Functions ---
@@ -2808,12 +2831,34 @@ def actualizar_alerta(
 @app.get("/alertas/{alerta_id}/snapshot")
 def obtener_snapshot_alerta(
     alerta_id: int,
-    current_user: dict = Depends(get_current_user)
+    token: str = None,
+    current_user: dict = Depends(get_current_user_optional)
 ):
     """
-    Obtiene URL firmada del snapshot de una alerta de caída.
-    La URL es válida por 1 hora.
+    Sirve la imagen del snapshot de una alerta de caída directamente desde GCS.
+    Acepta autenticación por header Authorization o query parameter token.
     """
+    from fastapi.responses import StreamingResponse
+    import io
+
+    # Si viene token por query parameter, autenticar con eso
+    if token and not current_user:
+        try:
+            decoded_token = auth.verify_id_token(token)
+            current_user = decoded_token
+        except Exception as e:
+            print(f"Error al verificar token de query: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token inválido"
+            )
+
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No autenticado"
+        )
+
     user_info = read_users_me(current_user)
 
     with engine.connect() as db_conn:
@@ -2879,25 +2924,38 @@ def obtener_snapshot_alerta(
             bucket_name = parts[0]
             blob_path = parts[1]
 
-            # Generar URL firmada
+            # Descargar la imagen desde GCS y servirla directamente
             storage_client = storage.Client()
             bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_path)
 
-            # URL válida por 1 hora
-            signed_url = blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(hours=1),
-                method="GET"
+            # Verificar que el blob existe
+            if not blob.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="La imagen del snapshot no existe en el almacenamiento."
+                )
+
+            # Descargar el contenido
+            image_bytes = blob.download_as_bytes()
+
+            # Determinar el tipo de contenido
+            content_type = blob.content_type or "image/jpeg"
+
+            # Retornar como streaming response
+            return StreamingResponse(
+                io.BytesIO(image_bytes),
+                media_type=content_type,
+                headers={
+                    "Cache-Control": "public, max-age=3600",
+                    "Content-Disposition": f"inline; filename=snapshot_{alerta_id}.jpg"
+                }
             )
 
-            return {
-                "snapshot_url": signed_url,
-                "expires_in_seconds": 3600
-            }
-
+        except HTTPException:
+            raise
         except Exception as e:
-            print(f"❌ Error al generar URL firmada: {e}")
+            print(f"❌ Error al obtener snapshot desde GCS: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error al obtener snapshot: {str(e)}"

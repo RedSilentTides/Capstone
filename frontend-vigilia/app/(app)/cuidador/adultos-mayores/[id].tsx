@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, Pressable, ScrollView,
-    ActivityIndicator, RefreshControl, TextInput, Alert, Modal
+    ActivityIndicator, RefreshControl, TextInput, Modal
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import axios from 'axios';
 import CustomHeader from '../../../../components/CustomHeader';
 import { User, Calendar, MapPin, FileText, Bell, AlertTriangle, Heart, Smartphone } from 'lucide-react-native';
 import { useAuth } from '../../../../contexts/AuthContext';
+import { useToast } from '../../../../contexts/ToastContext';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
 
@@ -45,6 +46,7 @@ export default function AdultoMayorDetalleScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const { user } = useAuth();
+    const { showToast, showConfirm } = useToast();
     const [adulto, setAdulto] = useState<AdultoMayorDetalle | null>(null);
     const [caidas, setCaidas] = useState<EventoCaida[]>([]);
     const [dispositivo, setDispositivo] = useState<DispositivoInfo | null>(null);
@@ -132,15 +134,15 @@ export default function AdultoMayorDetalleScreen() {
 
     const handleConfigurarDispositivo = async () => {
         if (!hardwareId.trim()) {
-            Alert.alert('Error', 'Por favor ingresa el Hardware ID (MAC Address) del dispositivo');
+            showToast('error', 'Error', 'Por favor ingresa el Hardware ID (MAC Address) del dispositivo');
             return;
         }
         if (!usuarioCamara.trim()) {
-            Alert.alert('Error', 'Por favor ingresa el usuario de la cámara');
+            showToast('error', 'Error', 'Por favor ingresa el usuario de la cámara');
             return;
         }
         if (!contrasenaCamara.trim()) {
-            Alert.alert('Error', 'Por favor ingresa la contraseña de la cámara');
+            showToast('error', 'Error', 'Por favor ingresa la contraseña de la cámara');
             return;
         }
 
@@ -170,9 +172,10 @@ export default function AdultoMayorDetalleScreen() {
             // Refrescar datos para mostrar el dispositivo configurado
             await fetchDatos();
 
-            Alert.alert(
+            showToast(
+                'success',
                 'Éxito',
-                `Dispositivo NanoPi configurado exitosamente para ${adulto?.nombre_completo}.\n\nAhora los videos de este dispositivo se asociarán automáticamente.`
+                `Dispositivo NanoPi configurado exitosamente para ${adulto?.nombre_completo}. Ahora los videos de este dispositivo se asociarán automáticamente.`
             );
 
         } catch (err) {
@@ -180,7 +183,7 @@ export default function AdultoMayorDetalleScreen() {
             const mensaje = axios.isAxiosError(err)
                 ? err.response?.data?.detail || 'Error al configurar el dispositivo'
                 : 'Error inesperado al configurar el dispositivo';
-            Alert.alert('Error', mensaje);
+            showToast('error', 'Error', mensaje);
         } finally {
             setConfigurandoDispositivo(false);
         }

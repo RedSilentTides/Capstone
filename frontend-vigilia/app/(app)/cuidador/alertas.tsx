@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal, Image, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart, Camera } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart, Camera, AlertCircle } from 'lucide-react-native';
 import { useAuth } from '../../../contexts/AuthContext';
 import CustomHeader from '../../../components/CustomHeader';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
+
+// Intervalo de actualización automática (30 segundos)
+const AUTO_REFRESH_INTERVAL = 30000;
 
 // Tipos de alertas expandidos
 type AlertType = 'caida' | 'ayuda' | 'recordatorio' | 'consejo' | 'sistema';
@@ -78,6 +81,79 @@ const alertConfig: Record<AlertType, { color: string; bgColor: string }> = {
   consejo: { color: '#7c3aed', bgColor: '#ede9fe' },
   sistema: { color: '#10b981', bgColor: '#d1fae5' },
 };
+
+// Componente Toast para notificaciones
+function Toast({
+  visible,
+  message,
+  type = 'info',
+  onDismiss
+}: {
+  visible: boolean;
+  message: string;
+  type?: 'success' | 'error' | 'info';
+  onDismiss: () => void;
+}) {
+  const [fadeAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    if (visible) {
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.delay(3000),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        onDismiss();
+      });
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const bgColors = {
+    success: '#10b981',
+    error: '#ef4444',
+    info: '#3b82f6',
+  };
+
+  const icons = {
+    success: <CheckCircle size={20} color="white" />,
+    error: <AlertCircle size={20} color="white" />,
+    info: <Info size={20} color="white" />,
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.toast,
+        {
+          backgroundColor: bgColors[type],
+          opacity: fadeAnim,
+          transform: [{
+            translateY: fadeAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [-20, 0]
+            })
+          }]
+        }
+      ]}
+    >
+      {icons[type]}
+      <Text style={styles.toastText}>{message}</Text>
+      <Pressable onPress={onDismiss} style={styles.toastCloseButton}>
+        <X size={18} color="white" />
+      </Pressable>
+    </Animated.View>
+  );
+}
 
 // Componente AlertCard mejorado
 function AlertCard({
@@ -247,6 +323,18 @@ export default function AlertasScreen() {
   const [isSnapshotModalVisible, setIsSnapshotModalVisible] = useState(false);
   const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
 
+  // Toast state
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info');
+
+  // Función para mostrar toast
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToastMessage(message);
+    setToastType(type);
+    setToastVisible(true);
+  }, []);
+
   // Funciones para persistir recordatorios leídos
   const RECORDATORIOS_LEIDOS_KEY = 'recordatorios_leidos';
 
@@ -279,12 +367,14 @@ export default function AlertasScreen() {
       const leidosGuardados = await cargarRecordatoriosLeidos();
       const leidosFiltrados = Array.from(leidosGuardados).filter(id => idsActuales.has(id));
       if (leidosFiltrados.length !== leidosGuardados.size) {
-        await AsyncStorage.setItem(RECORDATORIOS_LEIDOS_KEY, JSON.stringify(leidosFiltrados));
+        const newSet = new Set(leidosFiltrados);
+        await guardarRecordatoriosLeidos(newSet);
+        setRecordatoriosLeidos(newSet);
       }
     } catch (error) {
       console.error('Error al limpiar recordatorios antiguos:', error);
     }
-  }, [cargarRecordatoriosLeidos]);
+  }, [cargarRecordatoriosLeidos, guardarRecordatoriosLeidos]);
 
   const convertirEventosACaidas = (eventos: EventoCaida[]): Alerta[] => {
     return eventos.map(evento => {
@@ -330,14 +420,14 @@ export default function AlertasScreen() {
       return response.data;
     } catch (err) {
       console.error('[ALERTAS] Error al obtener perfil:', err);
-      setError('No se pudo verificar tu perfil. Intenta de nuevo.');
+      showToast('No se pudo verificar tu perfil', 'error');
       return null;
     }
-  }, [user]);
+  }, [user, showToast]);
 
-  const fetchAlertas = useCallback(async (isRefreshing = false) => {
+  const fetchAlertas = useCallback(async (isRefreshing = false, silentUpdate = false) => {
     if (!user || !userProfile) return;
-    if (!isRefreshing) setIsLoading(true);
+    if (!isRefreshing && !silentUpdate) setIsLoading(true);
     setError(null);
 
     try {
@@ -395,14 +485,18 @@ export default function AlertasScreen() {
         console.error('[ALERTAS] Error al obtener alertas:', err);
         if (axios.isAxiosError(err) && err.response?.status === 403) {
           setError('Acceso no permitido para este rol.');
+          showToast('Acceso no permitido', 'error');
         } else {
           setError(axios.isAxiosError(err) ? err.response?.data?.detail || 'No se pudieron cargar las alertas.' : 'Error inesperado.');
+          if (!silentUpdate) {
+            showToast('Error al cargar alertas', 'error');
+          }
         }
     } finally {
         setIsLoading(false);
         setRefreshing(false);
     }
-  }, [user, userProfile, limpiarRecordatoriosAntiguos]);
+  }, [user, userProfile, limpiarRecordatoriosAntiguos, showToast]);
 
   // Cargar perfil de usuario al iniciar
   useEffect(() => {
@@ -426,6 +520,18 @@ export default function AlertasScreen() {
     if (userProfile) {
       fetchAlertas();
     }
+  }, [userProfile]);
+
+  // Auto-refresh cada 30 segundos
+  useEffect(() => {
+    if (!userProfile) return;
+
+    const interval = setInterval(() => {
+      console.log('[ALERTAS] Auto-refresh en progreso...');
+      fetchAlertas(false, true); // silentUpdate = true para no mostrar loading
+    }, AUTO_REFRESH_INTERVAL);
+
+    return () => clearInterval(interval);
   }, [userProfile, fetchAlertas]);
 
   const handleRefresh = () => {
@@ -443,34 +549,45 @@ export default function AlertasScreen() {
 
     try {
       const token = await user.getIdToken();
+
+      // Descargar la imagen como blob usando axios con Authorization header
       const response = await axios.get(`${API_URL}/alertas/${alertaId}/snapshot`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
       });
 
-      if (response.data?.snapshot_url) {
-        setSnapshotUrl(response.data.snapshot_url);
-        console.log('[SNAPSHOT] URL obtenida exitosamente');
-      } else {
-        console.error('[SNAPSHOT] No se recibió URL en la respuesta');
-        setError('No se pudo obtener la imagen');
+      // Convertir el blob a Data URL para mostrarlo en <Image>
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        setSnapshotUrl(base64data);
+        console.log('[SNAPSHOT] Imagen cargada exitosamente como base64');
+        setIsLoadingSnapshot(false);
+      };
+      reader.onerror = () => {
+        console.error('[SNAPSHOT] Error al leer blob');
+        showToast('error', 'Error', 'Error al procesar la imagen');
         setIsSnapshotModalVisible(false);
-      }
+        setIsLoadingSnapshot(false);
+      };
+      reader.readAsDataURL(response.data);
+
     } catch (err) {
       console.error('[SNAPSHOT] Error al obtener snapshot:', err);
       if (axios.isAxiosError(err) && err.response?.status === 404) {
-        setError('Esta alerta no tiene foto disponible');
+        showToast('error', 'Error', 'Esta alerta no tiene foto disponible');
       } else {
-        setError('Error al cargar la imagen');
+        showToast('error', 'Error', 'Error al cargar la imagen');
       }
       setIsSnapshotModalVisible(false);
-    } finally {
       setIsLoadingSnapshot(false);
     }
-  }, [user]);
+  }, [user, showToast]);
 
   // Función para descartar una alerta
   const handleDismiss = (id: string) => {
     setAlertas((prev) => prev.filter((a) => a.id !== id));
+    showToast('Alerta descartada', 'success');
   };
 
   // Función para alternar expansión de adulto mayor
@@ -502,6 +619,10 @@ export default function AlertasScreen() {
     });
   };
 
+  // Filtrar últimas 3 de cada tipo
+  const alertasCaidas = alertas.filter(a => a.type === 'caida').slice(0, 3);
+  const alertasAyuda = alertas.filter(a => a.type === 'ayuda').slice(0, 3);
+
   // Estadísticas de alertas
   const totalRecordatorios = recordatoriosPorAdultoMayor.reduce((sum, grupo) => sum + grupo.recordatorios.length, 0);
 
@@ -528,6 +649,14 @@ export default function AlertasScreen() {
         title={userProfile?.rol === 'adulto_mayor' ? 'Mis Notificaciones' : 'Historial de Notificaciones'}
         onMenuPress={() => router.push('/panel')}
         showBackButton={true}
+      />
+
+      {/* Toast de notificaciones */}
+      <Toast
+        visible={toastVisible}
+        message={toastMessage}
+        type={toastType}
+        onDismiss={() => setToastVisible(false)}
       />
 
       {isLoading && !refreshing ? (
@@ -570,6 +699,47 @@ export default function AlertasScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
           >
+            {/* ORDEN NUEVO: 1. Caídas, 2. Ayuda, 3. Recordatorios */}
+
+            {/* Sección de Alertas de Caída */}
+            {alertasCaidas.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Alertas de Caída</Text>
+                  {totalCaidas > 3 && (
+                    <Text style={styles.sectionSubtitle}>Mostrando últimas 3 de {totalCaidas}</Text>
+                  )}
+                </View>
+                {alertasCaidas.map((alerta) => (
+                  <AlertCard
+                    key={alerta.id}
+                    alert={alerta}
+                    onDismiss={handleDismiss}
+                    onViewSnapshot={handleViewSnapshot}
+                  />
+                ))}
+              </View>
+            )}
+
+            {/* Sección de Solicitudes de Ayuda */}
+            {alertasAyuda.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Solicitudes de Ayuda</Text>
+                  {totalAlertasAyuda > 3 && (
+                    <Text style={styles.sectionSubtitle}>Mostrando últimas 3 de {totalAlertasAyuda}</Text>
+                  )}
+                </View>
+                {alertasAyuda.map((alerta) => (
+                  <AlertCard
+                    key={alerta.id}
+                    alert={alerta}
+                    onDismiss={handleDismiss}
+                  />
+                ))}
+              </View>
+            )}
+
             {/* Sección de Recordatorios */}
             {recordatoriosPorAdultoMayor.length > 0 && (
               <View style={styles.section}>
@@ -632,35 +802,6 @@ export default function AlertasScreen() {
                     </View>
                   </>
                 )}
-              </View>
-            )}
-
-            {/* Sección de Alertas de Ayuda */}
-            {alertas.filter(a => a.type === 'ayuda').length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Solicitudes de Ayuda</Text>
-                {alertas.filter(a => a.type === 'ayuda').map((alerta) => (
-                  <AlertCard
-                    key={alerta.id}
-                    alert={alerta}
-                    onDismiss={handleDismiss}
-                  />
-                ))}
-              </View>
-            )}
-
-            {/* Sección de Alertas de Caída */}
-            {alertas.filter(a => a.type === 'caida').length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Alertas de Caída</Text>
-                {alertas.filter(a => a.type === 'caida').map((alerta) => (
-                  <AlertCard
-                    key={alerta.id}
-                    alert={alerta}
-                    onDismiss={handleDismiss}
-                    onViewSnapshot={handleViewSnapshot}
-                  />
-                ))}
               </View>
             )}
 
@@ -865,7 +1006,7 @@ export default function AlertasScreen() {
                   resizeMode="contain"
                   onError={(error) => {
                     console.error('[SNAPSHOT] Error al cargar imagen:', error.nativeEvent.error);
-                    setError('Error al cargar la imagen');
+                    showToast('Error al cargar la imagen', 'error');
                     setIsSnapshotModalVisible(false);
                   }}
                 />
@@ -1039,14 +1180,22 @@ const styles = StyleSheet.create({
     color: '#9ca3af'
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 28,
+  },
+  sectionHeader: {
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#111827',
-    marginBottom: 12,
-    paddingHorizontal: 4,
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6b7280',
   },
   adultoMayorCard: {
     backgroundColor: 'white',
@@ -1386,5 +1535,32 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Estilos para Toast
+  toast: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1000,
+    gap: 12,
+  },
+  toastText: {
+    flex: 1,
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  toastCloseButton: {
+    padding: 4,
   },
 });
