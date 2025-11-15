@@ -27,20 +27,14 @@ export default function PanelScreen() {
       }
     };
 
-    if (Platform.OS === 'web') {
-        if (window.confirm('¿Estás seguro que deseas cerrar sesión?')) {
-            performLogout();
-        }
-    } else {
-        showConfirm({
-            title: "Cerrar Sesión",
-            message: "¿Estás seguro que deseas cerrar sesión?",
-            cancelText: "Cancelar",
-            confirmText: "Cerrar Sesión",
-            onConfirm: performLogout,
-            destructive: true
-        });
-    }
+    showConfirm({
+        title: "Cerrar Sesión",
+        message: "¿Estás seguro que deseas cerrar sesión?",
+        cancelText: "Cancelar",
+        confirmText: "Cerrar Sesión",
+        onConfirm: performLogout,
+        destructive: true
+    });
   };
 
   const navigate = (path: string) => {

@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import axios from 'axios';
 import CustomHeader from '../../components/CustomHeader';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { UserPlus, Clock, CheckCircle, XCircle, Mail, Check, X } from 'lucide-react-native';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -26,7 +27,8 @@ type SolicitudCuidado = {
 
 export default function SolicitudesScreen() {
     const router = useRouter();
-    const { user } = useAuth(); // <-- AÑADIDO
+    const { user } = useAuth();
+    const { showToast, showConfirm } = useToast();
     const [solicitudes, setSolicitudes] = useState<SolicitudCuidado[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -63,55 +65,62 @@ export default function SolicitudesScreen() {
 
     const handleAceptar = async (solicitudId: number) => {
         if (!user) return;
-        const confirmacion = Platform.OS === 'web'
-            ? window.confirm('¿Estás seguro de que deseas aceptar esta solicitud? Tu rol cambiará a "Adulto Mayor" y se creará una relación con el cuidador.')
-            : true;
 
-        if (!confirmacion) return;
-
-        try {
-            const token = await user.getIdToken();
-            await axios.put(
-                `${API_URL}/solicitudes-cuidado/${solicitudId}/aceptar`,
-                {},
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            alert('Solicitud aceptada exitosamente.');
-            await fetchSolicitudes();
-            router.push('/');
-        } catch (err) {
-            console.error('Error al aceptar solicitud:', err);
-            const errorMsg = axios.isAxiosError(err)
-                ? (err.response?.data?.detail || 'Error al aceptar la solicitud.')
-                : 'Error inesperado.';
-            alert(`Error: ${errorMsg}`);
-        }
+        showConfirm({
+            title: "Aceptar Solicitud",
+            message: '¿Estás seguro de que deseas aceptar esta solicitud? Tu rol cambiará a "Adulto Mayor" y se creará una relación con el cuidador.',
+            confirmText: "Aceptar",
+            cancelText: "Cancelar",
+            onConfirm: async () => {
+                try {
+                    const token = await user.getIdToken();
+                    await axios.put(
+                        `${API_URL}/solicitudes-cuidado/${solicitudId}/aceptar`,
+                        {},
+                        { headers: { Authorization: `Bearer ${token}` } }
+                    );
+                    showToast('success', 'Éxito', 'Solicitud aceptada exitosamente.');
+                    await fetchSolicitudes();
+                    router.push('/');
+                } catch (err) {
+                    console.error('Error al aceptar solicitud:', err);
+                    const errorMsg = axios.isAxiosError(err)
+                        ? (err.response?.data?.detail || 'Error al aceptar la solicitud.')
+                        : 'Error inesperado.';
+                    showToast('error', 'Error', errorMsg);
+                }
+            }
+        });
     };
 
     const handleRechazar = async (solicitudId: number) => {
         if (!user) return;
-        const confirmacion = Platform.OS === 'web'
-            ? window.confirm('¿Estás seguro de que deseas rechazar esta solicitud?')
-            : true;
 
-        if (!confirmacion) return;
-
-        try {
-            const token = await user.getIdToken();
-            await axios.put(
-                `${API_URL}/solicitudes-cuidado/${solicitudId}/rechazar`,
-                {},
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            alert('Solicitud rechazada exitosamente.');
-            await fetchSolicitudes();
-        } catch (err) {
-            console.error('Error al rechazar solicitud:', err);
-            const errorMsg = axios.isAxiosError(err)
-                ? (err.response?.data?.detail || 'Error al rechazar la solicitud.')
-                : 'Error inesperado.';
-            alert(`Error: ${errorMsg}`);
-        }
+        showConfirm({
+            title: "Rechazar Solicitud",
+            message: '¿Estás seguro de que deseas rechazar esta solicitud?',
+            confirmText: "Rechazar",
+            cancelText: "Cancelar",
+            destructive: true,
+            onConfirm: async () => {
+                try {
+                    const token = await user.getIdToken();
+                    await axios.put(
+                        `${API_URL}/solicitudes-cuidado/${solicitudId}/rechazar`,
+                        {},
+                        { headers: { Authorization: `Bearer ${token}` } }
+                    );
+                    showToast('success', 'Éxito', 'Solicitud rechazada exitosamente.');
+                    await fetchSolicitudes();
+                } catch (err) {
+                    console.error('Error al rechazar solicitud:', err);
+                    const errorMsg = axios.isAxiosError(err)
+                        ? (err.response?.data?.detail || 'Error al rechazar la solicitud.')
+                        : 'Error inesperado.';
+                    showToast('error', 'Error', errorMsg);
+                }
+            }
+        });
     };
 
     const getEstadoColor = (estado: string) => {

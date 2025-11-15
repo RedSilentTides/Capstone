@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import axios, { AxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, CalendarCheck, Camera } from 'lucide-react-native';
 
 // URL del backend
@@ -170,6 +171,7 @@ function AlertPreviewCard({
 export default function IndexScreen() {
   // --- INICIO DE ZONA DE HOOKS (TODOS JUNTOS) ---
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { showToast } = useToast();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -339,7 +341,7 @@ export default function IndexScreen() {
 
       await sendYaVoyWithFallback(alerta, authHeader);
 
-      alert(`Se informó a ${alerta.nombre_adulto_mayor || 'la persona'}: "Ayuda en camino"`);
+      showToast('success', 'Ayuda en camino', `Se informó a ${alerta.nombre_adulto_mayor || 'la persona'}: "Ayuda en camino"`);
 
       // marcar alerta como confirmada y ajustar contador
       setAlertas(prev => prev.map(a => (a.id === id ? { ...a, confirmado_por_cuidador: true } : a)));
@@ -365,7 +367,7 @@ export default function IndexScreen() {
         axios.isAxiosError(error) && (error.response?.data?.detail || error.message)
           ? (error.response?.data?.detail || error.message)
           : 'No se pudo enviar la confirmación.';
-      alert(`Error: ${msg}`);
+      showToast('error', 'Error', msg);
     } finally {
       setEnviandoYaVoy(prev => {
         const copy = new Set(prev);
@@ -541,7 +543,7 @@ export default function IndexScreen() {
 
       await axios.post(`${API_URL}/alertas`, { adulto_mayor_id: adultoMayorId, tipo_alerta: 'ayuda' }, authHeader);
 
-      alert('¡Alerta de ayuda enviada! Tus cuidadores han sido notificados.');
+      showToast('success', 'Alerta enviada', '¡Alerta de ayuda enviada! Tus cuidadores han sido notificados.');
 
       // Refrescar el dashboard para que el adulto mayor vea su alerta inmediatamente
       console.log('🔄 Refrescando dashboard después de enviar alerta...');
@@ -552,7 +554,7 @@ export default function IndexScreen() {
       const errorMessage = axios.isAxiosError(error)
         ? error.response?.data?.detail || 'Error al enviar alerta de ayuda'
         : (error instanceof Error ? error.message : 'Error inesperado al enviar alerta');
-      alert(`Error: ${errorMessage}`);
+      showToast('error', 'Error', errorMessage);
     } finally {
       setIsEnviandoAlerta(false);
     }

@@ -40,11 +40,11 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <NotificationProvider>
-          <ToastProvider>
+        <ToastProvider>
+          <NotificationProvider>
             <InitialLayout />
-          </ToastProvider>
-        </NotificationProvider>
+          </NotificationProvider>
+        </ToastProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

@@ -1,17 +1,19 @@
 import React from 'react';
 import {
-  View, Text, Pressable, StyleSheet, Image, ScrollView, Platform, Alert
+  View, Text, Pressable, StyleSheet, Image, ScrollView, Platform
 } from 'react-native';
 import { X, User, Bell, Settings, HelpCircle, CalendarCheck, ChevronRight, LogOut, Home } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useToast } from '../contexts/ToastContext';
 
 // El componente ya no necesita props para abrir/cerrar
 export default function SlidingPanel() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { showToast, showConfirm } = useToast();
 
   const handleLogout = () => {
     const performLogout = async () => {
@@ -21,18 +23,18 @@ export default function SlidingPanel() {
         // No necesitamos hacer nada más aquí.
       } catch (error) {
         console.error('Error al cerrar sesión:', error);
-        Alert.alert('Error', 'No se pudo cerrar sesión correctamente');
+        showToast('error', 'Error', 'No se pudo cerrar sesión correctamente');
       }
     };
 
-    Alert.alert(
-      "Cerrar Sesión",
-      "¿Estás seguro que deseas cerrar sesión?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Cerrar Sesión", style: "destructive", onPress: performLogout }
-      ]
-    );
+    showConfirm({
+      title: "Cerrar Sesión",
+      message: "¿Estás seguro que deseas cerrar sesión?",
+      cancelText: "Cancelar",
+      confirmText: "Cerrar Sesión",
+      onConfirm: performLogout,
+      destructive: true
+    });
   };
 
   // Ahora usamos router.back() para cerrar

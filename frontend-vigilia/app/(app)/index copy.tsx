@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { useToast } from '../../contexts/ToastContext';
 import { Info, AlertTriangle, CheckCircle, Bell, UserPlus, Users, X, Heart, CalendarCheck } from 'lucide-react-native';
 
 // URL del backend
@@ -106,6 +107,7 @@ export default function IndexScreen() {
   // --- INICIO DE ZONA DE HOOKS (TODOS JUNTOS) ---
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { onNewAlert } = useNotifications();
+  const { showToast } = useToast();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -268,14 +270,14 @@ export default function IndexScreen() {
 
       await axios.post(`${API_URL}/alertas`, { adulto_mayor_id: adultoMayorId, tipo_alerta: 'ayuda' }, authHeader);
 
-      alert('¡Alerta de ayuda enviada! Tus cuidadores han sido notificados.');
+      showToast('success', 'Alerta enviada', '¡Alerta de ayuda enviada! Tus cuidadores han sido notificados.');
 
     } catch (error) {
       console.error('Error al enviar alerta de ayuda:', error);
       const errorMessage = axios.isAxiosError(error)
         ? error.response?.data?.detail || 'Error al enviar alerta de ayuda'
         : (error instanceof Error ? error.message : 'Error inesperado al enviar alerta');
-      alert(`Error: ${errorMessage}`);
+      showToast('error', 'Error', errorMessage);
     } finally {
       setIsEnviandoAlerta(false);
     }

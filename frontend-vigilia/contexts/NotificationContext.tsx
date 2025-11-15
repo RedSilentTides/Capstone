@@ -11,6 +11,7 @@ import {
 } from '../services/notificationService';
 import { getWebSocketService, resetWebSocketService, WebSocketMessage } from '../services/websocketService';
 import { useAuth } from './AuthContext';
+import { useToast } from './ToastContext';
 import axios from 'axios';
 
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -46,6 +47,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const { user, isAuthenticated } = useAuth();
+  const { showToast } = useToast();
   const router = useRouter();
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
@@ -170,10 +172,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         console.log(`💙 CONFIRMACIÓN RECIBIDA: ${titulo} - ${mensaje}`);
 
-        // Mostrar alert en web
-        if (Platform.OS === 'web') {
-          alert(`${titulo}\n\n${mensaje}`);
-        }
+        // Mostrar toast en todas las plataformas
+        showToast('info', titulo, mensaje);
 
         // Intentar notificación del navegador
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
@@ -227,10 +227,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         console.log(`${emoji} ALERTA (${alerta.tipo_alerta}): ${mensaje}`);
 
-        // En web, SIEMPRE mostrar alert() para garantizar que se vea
-        if (Platform.OS === 'web') {
-          alert(`${titulo}\n\n${mensaje}\n\nAlerta ID: ${alerta.id}`);
-        }
+        // Mostrar toast en todas las plataformas
+        const tipoToast = alerta.tipo_alerta === 'caida' ? 'error' : 'error'; // Ambas son urgentes
+        showToast(tipoToast, titulo, `${mensaje}\n\nAlerta ID: ${alerta.id}`);
 
         // Adicionalmente, intentar notificación del navegador si está permitido
         if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
