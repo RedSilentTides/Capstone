@@ -44,7 +44,20 @@
       "Bash(gcloud firebase hosting sites describe:*)",
       "Bash(nslookup:*)",
       "Bash(C:Usersacuribackend_logs.txt)",
-      "Bash(gcloud iam service-accounts add-iam-policy-binding:*)"
+      "Bash(gcloud iam service-accounts add-iam-policy-binding:*)",
+      "Bash(gcloud config set:*)",
+      "Bash(cat:*)",
+      "Bash(gcloud builds submit:*)",
+      "Bash(test_caida.bat)",
+      "Bash(cmd /c \"c:\\Users\\acuri\\Documents\\Vigilia\\Capstone\\test_caida.bat\")",
+      "Bash(\"c:\\Users\\acuri\\backend_logs.json\")",
+      "Bash(\"c:\\Users\\acuri\\temp_token.txt\")",
+      "Bash(\"c:\\Users\\acuri\\temp_logs.txt\")",
+      "Bash(gcloud secrets versions list:*)",
+      "Bash(\"c:\\Users\\acuri\\token_v9.txt\")",
+      "Bash(\"c:\\Users\\acuri\\token_v10_verify.txt\")",
+      "Bash(\"c:\\Users\\acuri\\backend_logs.txt\")",
+      "Bash(\"c:\\Users\\acuri\\temp_logs.json\")"
     ],
     "deny": [],
     "ask": []

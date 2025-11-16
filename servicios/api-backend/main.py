@@ -1219,9 +1219,12 @@ async def notificar_evento_caida(
                             phone = config[2]
                             payload = {
                                 "phone_number": phone,
-                                "notification_type": "fall_detection",
+                                "notification_type": "fall_alert",  # Actualizado para usar template alertacaidatest
                                 "title": titulo,
-                                "body": mensaje
+                                "body": mensaje,
+                                "parameters": {
+                                    "nombre_adulto_mayor": nombre_adulto  # Parámetro requerido por el template
+                                }
                             }
                             try:
                                 wsp_response = requests.post(
@@ -2518,15 +2521,18 @@ def crear_alerta(
 
                         # Determinar tipo de notificación según tipo de alerta
                         if alerta_data.tipo_alerta == 'ayuda':
-                            notification_type = "alert"
+                            notification_type = "help_alert"
                         else:  # caida
-                            notification_type = "fall_detection"
+                            notification_type = "fall_alert"
 
                         payload = {
                             "phone_number": phone,
                             "notification_type": notification_type,
                             "title": titulo,  # Ya definido anteriormente (línea ~1820)
-                            "body": mensaje   # Ya definido anteriormente (línea ~1820)
+                            "body": mensaje,   # Ya definido anteriormente (línea ~1820)
+                            "parameters": {
+                                "nombre_adulto_mayor": nombre_adulto_mayor or "Adulto Mayor"
+                            }
                         }
 
                         try:

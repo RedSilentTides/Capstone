@@ -1,9 +1,11 @@
+# -*- coding: utf-8 -*-
 import os
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, constr
 import httpx
 from datetime import datetime
+import json
 # Importar el middleware de CORS
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -59,9 +61,10 @@ class WhatsAppTextMessage(BaseModel):
 class NotificationRequest(BaseModel):
     """Modelo para enviar notificaciones de recordatorios/alertas"""
     phone_number: constr(min_length=10, max_length=15)
-    notification_type: str  # 'reminder', 'alert', 'fall_detection'
+    notification_type: str  # 'fall_alert', 'help_alert', 'reminder', 'welcome'
     title: str
     body: str
+    parameters: dict = {}  # Parámetros adicionales para el template
 
 # --- Seguridad con API Key ---
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -180,14 +183,17 @@ async def send_template_message(message: WhatsAppTemplateMessage):
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json; charset=utf-8"
     }
+
+    # Serializar el payload como JSON con UTF-8 y codificar como bytes
+    payload_json = json.dumps(payload, ensure_ascii=False).encode('utf-8')
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 WHATSAPP_API_URL,
-                json=payload,
+                content=payload_json,
                 headers=headers,
                 timeout=30.0
             )
@@ -240,14 +246,17 @@ async def send_text_message(message: WhatsAppTextMessage):
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json; charset=utf-8"
     }
+
+    # Serializar el payload como JSON con UTF-8 y codificar como bytes
+    payload_json = json.dumps(payload, ensure_ascii=False).encode('utf-8')
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 WHATSAPP_API_URL,
-                json=payload,
+                content=payload_json,
                 headers=headers,
                 timeout=30.0
             )
@@ -274,12 +283,67 @@ async def send_text_message(message: WhatsAppTextMessage):
             detail=f"Error al conectar con WhatsApp API: {str(e)}"
         )
 
+# --- Funciones Auxiliares ---
+def get_template_config(notification_type: str, parameters: dict):
+    """
+    Mapea el tipo de notificación al template de WhatsApp correspondiente.
+
+    Templates disponibles:
+    - alertacaidatest: Alerta de caída detectada (APROBADO)
+    - welcome: Mensaje de bienvenida (PENDIENTE CREACIÓN)
+    - help_alert: Alerta de ayuda (PENDIENTE CREACIÓN)
+    - reminder: Recordatorios (PENDIENTE CREACIÓN)
+    """
+
+    templates = {
+        "fall_alert": {
+            "name": "alertacaidatest",
+            "language": "es_CL",
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {
+                            "type": "text",
+                            "parameter_name": "nombre",
+                            "text": parameters.get("nombre_adulto_mayor", "Adulto Mayor")
+                        }
+                    ]
+                }
+            ]
+        },
+        # Templates futuros (usar hello_world hasta que estén aprobados)
+        "welcome": {
+            "name": "hello_world",  # TODO: Reemplazar con template de bienvenida
+            "language": "en_US",
+            "components": []
+        },
+        "help_alert": {
+            "name": "hello_world",  # TODO: Reemplazar con template de ayuda
+            "language": "en_US",
+            "components": []
+        },
+        "reminder": {
+            "name": "hello_world",  # TODO: Reemplazar con template de recordatorio
+            "language": "en_US",
+            "components": []
+        }
+    }
+
+    return templates.get(notification_type, templates["welcome"])
+
 # --- ENDPOINT: /send-notification (Enviar notificación de recordatorio/alerta) ---
 @app.post("/send-notification", dependencies=[Depends(verify_api_key)])
 async def send_notification(notification: NotificationRequest):
     """
     Envía una notificación de recordatorio o alerta por WhatsApp.
     Este endpoint es para uso interno de la plataforma VigilIA.
+
+    Tipos soportados:
+    - fall_alert: Alerta de caída (usa template 'alertacaidatest')
+    - welcome: Mensaje de bienvenida
+    - help_alert: Alerta de ayuda
+    - reminder: Recordatorios
     """
     if not WHATSAPP_TOKEN:
         raise HTTPException(
@@ -288,38 +352,54 @@ async def send_notification(notification: NotificationRequest):
         )
 
     print(f"📤 Enviando notificación {notification.notification_type} a {notification.phone_number}")
+    print(f"📝 Tipo: {notification.notification_type} - {notification.title}")
+    print(f"📝 Contenido: {notification.body}")
+    print(f"📝 Parámetros: {notification.parameters}")
 
-    # TEMPORAL: Usar template hello_world para números de test
-    # TODO: Reemplazar con templates personalizados una vez aprobados por Meta
-    # Templates requeridos: alerta_caida, solicitud_ayuda, recordatorio_medicamento
+    # Obtener configuración del template según el tipo
+    template_config = get_template_config(notification.notification_type, notification.parameters)
 
-    # Por ahora usamos hello_world que funciona con números de test
+    # Construir el payload
     payload = {
         "messaging_product": "whatsapp",
         "to": notification.phone_number,
         "type": "template",
         "template": {
-            "name": "hello_world",
+            "name": template_config["name"],
             "language": {
-                "code": "en_US"
+                "code": template_config["language"]
             }
         }
     }
 
-    # Log del mensaje que se enviaría con template personalizado
-    print(f"📝 Tipo: {notification.notification_type} - {notification.title}")
-    print(f"📝 Contenido: {notification.body}")
+    # Agregar componentes si existen
+    if template_config.get("components"):
+        payload["template"]["components"] = template_config["components"]
+
+    # LOG DETALLADO DEL PAYLOAD
+    import json
+    print("=" * 80)
+    print("📤 PAYLOAD COMPLETO A ENVIAR A META:")
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    print("=" * 80)
+    print(f"🔗 URL: {WHATSAPP_API_URL}")
+    print(f"🔑 Token (primeros 20): {WHATSAPP_TOKEN[:20]}...")
+    print(f"📏 Token length: {len(WHATSAPP_TOKEN)} bytes")
+    print("=" * 80)
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json; charset=utf-8"
     }
+
+    # Serializar el payload como JSON con UTF-8 y codificar como bytes
+    payload_json = json.dumps(payload, ensure_ascii=False).encode('utf-8')
 
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 WHATSAPP_API_URL,
-                json=payload,
+                content=payload_json,
                 headers=headers,
                 timeout=30.0
             )
@@ -330,6 +410,7 @@ async def send_notification(notification: NotificationRequest):
                 return {
                     "status": "sent",
                     "notification_type": notification.notification_type,
+                    "template_used": template_config["name"],
                     "message_id": result.get("messages", [{}])[0].get("id"),
                     "response": result
                 }

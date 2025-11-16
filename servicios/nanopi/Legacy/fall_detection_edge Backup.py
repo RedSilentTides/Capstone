@@ -1,4 +1,3 @@
-root@nanopineo4:/home/judex# cat /opt/vigilia-edge/fall_detection_edge.py
 #!/usr/bin/env python3
 """
 Detección de Caídas en Edge con MediaPipe

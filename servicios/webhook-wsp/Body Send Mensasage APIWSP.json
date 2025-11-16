@@ -1,0 +1,23 @@
+{
+    "messaging_product": "whatsapp",
+    "to": "{{Recipient-Phone-Number}}",
+    "type": "template",
+    "template": {
+        "name": "alertacaidatest",
+        "language": {
+            "code": "es_CL"
+        },
+        "components": [
+            {
+                "type": "body",
+                "parameters": [
+                    {
+                        "type": "text",
+                        "parameter_name": "nombre",
+                        "text": "Alexander Test"
+                    }
+                ]
+            }
+        ]
+    }
+}
