@@ -170,12 +170,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const recordatorio = message.recordatorio;
         console.log('📅 Nuevo recordatorio recibido via WebSocket:', recordatorio);
 
-        // Mostrar notificación visual persistente (sin auto-cierre)
         const titulo = recordatorio.titulo || 'Recordatorio';
         const nombreAdulto = recordatorio.nombre_adulto_mayor || '';
         const mensaje = nombreAdulto ? `Recordatorio para ${nombreAdulto}` : 'Tienes un recordatorio pendiente';
 
-        showPersistentToast('info', `📅 ${titulo}`, mensaje);
+        // Diferenciar entre creación y procesamiento según el estado
+        if (recordatorio.estado === 'enviado') {
+          // Recordatorio procesado (llegó la hora) → Toast PERSISTENTE
+          showPersistentToast('info', `📅 ${titulo}`, mensaje);
+        } else {
+          // Recordatorio creado o actualizado → Toast normal (auto-cierra)
+          showToast('info', `📅 ${titulo}`, mensaje);
+        }
 
         // Disparar evento personalizado para refrescar vistas
         if (typeof window !== 'undefined') {
