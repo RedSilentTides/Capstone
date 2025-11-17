@@ -11,6 +11,7 @@ from firebase_admin.exceptions import FirebaseError
 from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
 from google.cloud import storage
+import pytz
 
 # --- Configuración de Firebase ---
 try:
@@ -1281,11 +1282,18 @@ async def notificar_evento_caida(
                                 })
 
                         if destinatarios_email:
+                            # Convertir timestamp de UTC a timezone de Chile
+                            chile_tz = pytz.timezone('America/Santiago')
+                            if evento.timestamp_caida.tzinfo is None:
+                                timestamp_chile = pytz.utc.localize(evento.timestamp_caida).astimezone(chile_tz)
+                            else:
+                                timestamp_chile = evento.timestamp_caida.astimezone(chile_tz)
+
                             enviar_email_notificacion(
                                 tipo_notificacion="caida",
                                 destinatarios=destinatarios_email,
                                 adulto_mayor_nombre=nombre_adulto,
-                                timestamp=evento.timestamp_caida,
+                                timestamp=timestamp_chile,
                                 url_video=evento.url_video_almacenado,
                                 dispositivo_id=evento.dispositivo_id
                             )
@@ -1337,6 +1345,10 @@ class DeviceDetailsResponse(BaseModel):
     nombre_dispositivo: str
     usuario_camara: str | None = None
     fecha_configuracion: str | None = None
+
+class CheckCooldownRequest(BaseModel):
+    dispositivo_id: int
+    adulto_mayor_id: int
 
 @app.post("/dispositivos/get-or-create", response_model=DeviceInfo)
 async def get_or_create_device(
@@ -1615,9 +1627,52 @@ def create_recordatorio(
                      raise Exception("INSERT no devolvió el recordatorio creado.")
                 
                 trans.commit()
-                
-                print(f"✅ Recordatorio creado con ID: {result._mapping['id']}")
-                return RecordatorioInfo(**result._mapping)
+
+                recordatorio_creado = RecordatorioInfo(**result._mapping)
+                print(f"✅ Recordatorio creado con ID: {recordatorio_creado.id}")
+
+                # Notificar via WebSocket a usuarios relacionados
+                try:
+                    websocket_url = os.environ.get("WEBSOCKET_SERVICE_URL", "https://alertas-websocket-687053793381.southamerica-west1.run.app")
+                    internal_key = os.environ.get("INTERNAL_API_KEY", "").strip()
+
+                    # Obtener nombre del adulto mayor para el mensaje
+                    query_nombre = text("SELECT nombre_completo FROM adultos_mayores WHERE id = :adulto_mayor_id")
+                    nombre_result = db_conn.execute(query_nombre, {"adulto_mayor_id": recordatorio_creado.adulto_mayor_id}).fetchone()
+                    nombre_adulto_mayor = nombre_result[0] if nombre_result else "Adulto Mayor"
+
+                    recordatorio_dict = {
+                        "id": recordatorio_creado.id,
+                        "adulto_mayor_id": recordatorio_creado.adulto_mayor_id,
+                        "titulo": recordatorio_creado.titulo,
+                        "descripcion": recordatorio_creado.descripcion,
+                        "fecha_hora_programada": recordatorio_creado.fecha_hora_programada.isoformat(),
+                        "frecuencia": recordatorio_creado.frecuencia,
+                        "estado": recordatorio_creado.estado,
+                        "nombre_adulto_mayor": nombre_adulto_mayor
+                    }
+
+                    ws_response = requests.post(
+                        f"{websocket_url}/internal/notify-recordatorio",
+                        json=recordatorio_dict,
+                        headers={"X-Internal-Key": internal_key},
+                        timeout=5
+                    )
+
+                    if ws_response.status_code == 200:
+                        ws_data = ws_response.json()
+                        print(f"🌐 Notificación WebSocket enviada: {ws_data.get('notified_count', 0)} usuarios conectados")
+                    else:
+                        print(f"⚠️  WebSocket service respondió con código {ws_response.status_code}")
+
+                except requests.exceptions.Timeout:
+                    print(f"⚠️  Timeout al contactar servicio WebSocket (recordatorio creado exitosamente)")
+                except requests.exceptions.RequestException as ws_error:
+                    print(f"⚠️  Error al notificar via WebSocket (recordatorio creado exitosamente): {str(ws_error)}")
+                except Exception as ws_error:
+                    print(f"⚠️  Error inesperado al notificar via WebSocket: {str(ws_error)}")
+
+                return recordatorio_creado
                 
             except Exception as e_db:
                 print(f"--- ERROR AL CREAR RECORDATORIO (DB) ---")
@@ -1850,6 +1905,210 @@ def delete_recordatorio(
         print(f"--- ERROR AL ELIMINAR RECORDATORIO ---")
         print(f"ERROR: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error en BD: {str(e)}")
+
+
+@app.post("/recordatorios/procesar-pendientes")
+async def procesar_recordatorios_pendientes(
+    is_authorized: bool = Depends(verify_internal_token)
+):
+    """
+    Endpoint interno para procesar recordatorios pendientes y enviar notificaciones.
+    Debe ser llamado por Cloud Scheduler cada minuto.
+    """
+    print("🔔 Iniciando procesamiento de recordatorios pendientes...")
+
+    with engine.connect() as db_conn:
+        # DEBUG: Ver ventana de tiempo actual
+        debug_query = text("SELECT NOW() as ahora, NOW() - INTERVAL '2 minutes' as hace_2min")
+        debug_result = db_conn.execute(debug_query).fetchone()
+        print(f"⏰ Ventana de tiempo: {debug_result.hace_2min} a {debug_result.ahora}")
+
+        # DEBUG: Ver todos los recordatorios sin filtros de tiempo
+        debug_all = text("""
+            SELECT r.id, r.titulo, r.estado, r.fecha_hora_programada
+            FROM recordatorios r
+            WHERE r.estado = 'pendiente'
+            ORDER BY r.fecha_hora_programada DESC
+            LIMIT 5
+        """)
+        all_pending = db_conn.execute(debug_all).fetchall()
+        print(f"📝 Total recordatorios con estado='pendiente': {len(all_pending)}")
+        for rec in all_pending:
+            print(f"   - ID {rec.id}: {rec.titulo} @ {rec.fecha_hora_programada}")
+
+        # Buscar recordatorios que deben notificarse ahora
+        # Procesamos TODOS los pendientes cuya hora ya pasó (sin ventana de tiempo restrictiva)
+        # Esto permite recuperar notificaciones "atrasadas" si el sistema estuvo con problemas
+        query = text("""
+            SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion,
+                   r.fecha_hora_programada, r.frecuencia, r.tipo_recordatorio,
+                   r.dias_semana, am.nombre_completo as nombre_adulto_mayor
+            FROM recordatorios r
+            JOIN adultos_mayores am ON r.adulto_mayor_id = am.id
+            WHERE r.estado = 'pendiente'
+              AND r.fecha_hora_programada <= NOW()
+            ORDER BY r.fecha_hora_programada ASC
+        """)
+
+        recordatorios_pendientes = db_conn.execute(query).fetchall()
+        print(f"📋 Encontrados {len(recordatorios_pendientes)} recordatorios pendientes en ventana de tiempo")
+
+        if not recordatorios_pendientes:
+            return {
+                "status": "success",
+                "recordatorios_procesados": 0,
+                "message": "No hay recordatorios pendientes"
+            }
+
+        recordatorios_procesados = 0
+        errores = []
+
+        for recordatorio in recordatorios_pendientes:
+            try:
+                recordatorio_id = recordatorio[0]
+                adulto_mayor_id = recordatorio[1]
+                titulo = recordatorio[2]
+                descripcion = recordatorio[3] or ""
+                fecha_hora_programada = recordatorio[4]
+                frecuencia = recordatorio[5]
+                tipo_recordatorio = recordatorio[6]
+                dias_semana = recordatorio[7]
+                nombre_adulto_mayor = recordatorio[8]
+
+                print(f"📨 Procesando recordatorio {recordatorio_id}: {titulo}")
+
+                # 1. Obtener cuidadores del adulto mayor
+                query_cuidadores = text("""
+                    SELECT DISTINCT u.id, u.nombre, u.email, u.push_token
+                    FROM usuarios u
+                    JOIN cuidadores_adultos_mayores cam ON u.id = cam.usuario_id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                      AND u.rol = 'cuidador'
+                """)
+                cuidadores = db_conn.execute(query_cuidadores, {"adulto_mayor_id": adulto_mayor_id}).fetchall()
+
+                if not cuidadores:
+                    print(f"⚠️  No hay cuidadores para adulto mayor {adulto_mayor_id}")
+                    continue
+
+                # 2. Enviar notificaciones Push
+                push_count = 0
+                for cuidador in cuidadores:
+                    if cuidador.push_token:  # Si tiene push token registrado
+                        try:
+                            message = messaging.Message(
+                                notification=messaging.Notification(
+                                    title=f"🔔 Recordatorio: {titulo}",
+                                    body=descripcion or f"Recordatorio para {nombre_adulto_mayor}"
+                                ),
+                                data={
+                                    "tipo": "recordatorio",
+                                    "recordatorio_id": str(recordatorio_id),
+                                    "adulto_mayor_id": str(adulto_mayor_id)
+                                },
+                                token=cuidador.push_token
+                            )
+                            messaging.send(message)
+                            push_count += 1
+                            print(f"✅ Push enviado a {cuidador.nombre} ({cuidador.email})")
+                        except Exception as push_error:
+                            print(f"⚠️  Error Push para {cuidador.nombre}: {str(push_error)}")
+
+                # 3. Enviar notificaciones por Email (enviar a TODOS los cuidadores)
+                email_count = 0
+
+                # Preparar lista de destinatarios
+                destinatarios_email = []
+                for cuidador in cuidadores:
+                    if cuidador.email:
+                        destinatarios_email.append({
+                            "email": cuidador.email,
+                            "nombre": cuidador.nombre
+                        })
+
+                if destinatarios_email:
+                    # Convertir fecha_hora_programada de UTC a timezone de Chile
+                    chile_tz = pytz.timezone('America/Santiago')
+                    if fecha_hora_programada.tzinfo is None:
+                        # Si no tiene timezone, asumimos que es UTC
+                        fecha_hora_chile = pytz.utc.localize(fecha_hora_programada).astimezone(chile_tz)
+                    else:
+                        fecha_hora_chile = fecha_hora_programada.astimezone(chile_tz)
+
+                    # Usar el servicio de email (api-email)
+                    email_result = enviar_email_notificacion(
+                        tipo_notificacion="recordatorio",
+                        destinatarios=destinatarios_email,
+                        adulto_mayor_nombre=nombre_adulto_mayor,
+                        timestamp=datetime.now(pytz.utc),
+                        titulo_recordatorio=titulo,
+                        descripcion=descripcion or "",
+                        tipo_recordatorio="medicamento",  # Podríamos agregar este campo a la tabla recordatorios
+                        fecha_hora_programada=fecha_hora_chile
+                    )
+
+                    if email_result.get("success"):
+                        email_count = email_result.get("sent_count", 0)
+                    else:
+                        print(f"⚠️  Error al enviar emails via api-email: {email_result.get('error')}")
+
+                # 4. Enviar notificaciones por WhatsApp (deshabilitado por ahora)
+                # NOTA: Requiere agregar columna 'telefono' a tabla usuarios
+                whatsapp_count = 0
+
+                print(f"📊 Notificaciones enviadas - Push: {push_count}, Email: {email_count}, WhatsApp: {whatsapp_count}")
+
+                # 5. Actualizar estado del recordatorio o crear siguiente instancia
+                if frecuencia == 'una_vez':
+                    # Marcar como enviado (estados válidos: pendiente, enviado, confirmado, omitido)
+                    update_query = text("""
+                        UPDATE recordatorios
+                        SET estado = 'enviado'
+                        WHERE id = :recordatorio_id
+                    """)
+                    db_conn.execute(update_query, {"recordatorio_id": recordatorio_id})
+                    db_conn.commit()
+                    print(f"✅ Recordatorio {recordatorio_id} marcado como enviado")
+                else:
+                    # Calcular próxima fecha según frecuencia
+                    from datetime import timedelta
+                    proxima_fecha = fecha_hora_programada
+
+                    if frecuencia == 'diario':
+                        proxima_fecha = fecha_hora_programada + timedelta(days=1)
+                    elif frecuencia == 'semanal':
+                        proxima_fecha = fecha_hora_programada + timedelta(weeks=1)
+                    elif frecuencia == 'mensual':
+                        # Aproximado: 30 días
+                        proxima_fecha = fecha_hora_programada + timedelta(days=30)
+
+                    # Actualizar fecha del recordatorio
+                    update_query = text("""
+                        UPDATE recordatorios
+                        SET fecha_hora_programada = :proxima_fecha
+                        WHERE id = :recordatorio_id
+                    """)
+                    db_conn.execute(update_query, {
+                        "recordatorio_id": recordatorio_id,
+                        "proxima_fecha": proxima_fecha
+                    })
+                    db_conn.commit()
+                    print(f"✅ Recordatorio {recordatorio_id} reprogramado para {proxima_fecha}")
+
+                recordatorios_procesados += 1
+
+            except Exception as e:
+                print(f"❌ Error procesando recordatorio {recordatorio[0]}: {str(e)}")
+                errores.append({"recordatorio_id": recordatorio[0], "error": str(e)})
+                continue
+
+        return {
+            "status": "success",
+            "recordatorios_procesados": recordatorios_procesados,
+            "total_encontrados": len(recordatorios_pendientes),
+            "errores": errores
+        }
+
 
 # --- ENDPOINTS DE SOLICITUDES DE CUIDADO ---
 @app.post("/solicitudes-cuidado", response_model=SolicitudCuidadoInfo, status_code=status.HTTP_201_CREATED)
@@ -2475,11 +2734,19 @@ def crear_alerta(
                             # Determinar tipo de notificación
                             tipo_email = "ayuda" if alerta_data.tipo_alerta == "ayuda" else "caida"
 
+                            # Convertir timestamp de UTC a timezone de Chile
+                            chile_tz = pytz.timezone('America/Santiago')
+                            timestamp_utc = result[3] if result[3] else datetime.utcnow()
+                            if timestamp_utc.tzinfo is None:
+                                timestamp_chile = pytz.utc.localize(timestamp_utc).astimezone(chile_tz)
+                            else:
+                                timestamp_chile = timestamp_utc.astimezone(chile_tz)
+
                             enviar_email_notificacion(
                                 tipo_notificacion=tipo_email,
                                 destinatarios=destinatarios_email,
                                 adulto_mayor_nombre=nombre_adulto_mayor or "Adulto Mayor",
-                                timestamp=result[3] if result[3] else datetime.utcnow(),
+                                timestamp=timestamp_chile,
                                 mensaje_adicional=alerta_data.detalles_adicionales.get("mensaje") if alerta_data.detalles_adicionales else None,
                                 url_video=alerta_data.url_video_almacenado,
                                 dispositivo_id=alerta_data.dispositivo_id
@@ -2970,22 +3237,13 @@ def obtener_snapshot_alerta(
 
 @app.post("/dispositivos/check-cooldown")
 def verificar_cooldown_extendido(
-    dispositivo_id: int,
-    adulto_mayor_id: int,
-    x_internal_token: str = Header(None, alias="X-Internal-Token")
+    request: CheckCooldownRequest,
+    is_authorized: bool = Depends(verify_internal_token)
 ):
     """
     Endpoint interno para que el edge verifique si hay cooldown extendido activo.
     Retorna True si hay cooldown activo, False si puede crear nueva alerta.
     """
-    # Verificar autenticación interna
-    internal_token = os.environ.get("INTERNAL_API_KEY", "").strip()
-    if not internal_token or x_internal_token != internal_token:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Token interno inválido"
-        )
-
     with engine.connect() as db_conn:
         # Buscar alerta reciente con cooldown extendido activo
         query = text("""
@@ -3000,8 +3258,8 @@ def verificar_cooldown_extendido(
         """)
 
         result = db_conn.execute(query, {
-            "adulto_mayor_id": adulto_mayor_id,
-            "dispositivo_id": dispositivo_id
+            "adulto_mayor_id": request.adulto_mayor_id,
+            "dispositivo_id": request.dispositivo_id
         }).fetchone()
 
         if not result or not result[0]:

@@ -11,5 +11,8 @@ cloud-sql-python-connector[psycopg2]
 pydantic
 email-validator
 
+# Timezone handling
+pytz
+
 # Firebase Authentication
 firebase-admin

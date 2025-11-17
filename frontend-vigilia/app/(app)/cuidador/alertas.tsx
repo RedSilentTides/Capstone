@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal, Image, Animated } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal, Image, Animated, DeviceEventEmitter } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -533,6 +533,69 @@ export default function AlertasScreen() {
 
     return () => clearInterval(interval);
   }, [userProfile, fetchAlertas]);
+
+  // Escuchar eventos de notificaciones para actualizar alertas automáticamente (web + móvil)
+  useEffect(() => {
+    if (!user || !userProfile) {
+      return;
+    }
+
+    // Listener para nuevas alertas
+    const handleNuevaAlerta = async (eventData?: any) => {
+      console.log('[ALERTAS] 🔔 Evento nueva-alerta recibido', eventData);
+
+      // Refrescar alertas silenciosamente
+      await fetchAlertas(false, true);
+    };
+
+    // Listener para confirmaciones de alerta
+    const handleConfirmacionAlerta = async (eventData?: any) => {
+      console.log('[ALERTAS] 💙 Evento confirmacion-alerta recibido', eventData);
+
+      // Refrescar alertas silenciosamente
+      await fetchAlertas(false, true);
+    };
+
+    if (Platform.OS === 'web') {
+      // En web: escuchar eventos de window (WebSocket)
+      const handleNuevaAlertaWeb = (event: Event) => {
+        const customEvent = event as CustomEvent;
+        handleNuevaAlerta(customEvent.detail);
+      };
+
+      const handleConfirmacionAlertaWeb = (event: Event) => {
+        const customEvent = event as CustomEvent;
+        handleConfirmacionAlerta(customEvent.detail);
+      };
+
+      window.addEventListener('nueva-alerta', handleNuevaAlertaWeb);
+      window.addEventListener('confirmacion-alerta', handleConfirmacionAlertaWeb);
+
+      return () => {
+        window.removeEventListener('nueva-alerta', handleNuevaAlertaWeb);
+        window.removeEventListener('confirmacion-alerta', handleConfirmacionAlertaWeb);
+      };
+    } else {
+      // En móvil: escuchar eventos de DeviceEventEmitter (Push notifications)
+      const subscription1 = DeviceEventEmitter.addListener('nueva-alerta', handleNuevaAlerta);
+      const subscription2 = DeviceEventEmitter.addListener('confirmacion-alerta', handleConfirmacionAlerta);
+
+      return () => {
+        subscription1.remove();
+        subscription2.remove();
+      };
+    }
+  }, [user, userProfile, fetchAlertas]);
+
+  // Refresh automático cuando la vista recibe foco (útil en móvil cuando tocas una notificación)
+  useFocusEffect(
+    useCallback(() => {
+      if (userProfile) {
+        console.log('[ALERTAS] Vista enfocada, refrescando datos...');
+        fetchAlertas(false, true); // silentUpdate = true
+      }
+    }, [userProfile, fetchAlertas])
+  );
 
   const handleRefresh = () => {
     setRefreshing(true);

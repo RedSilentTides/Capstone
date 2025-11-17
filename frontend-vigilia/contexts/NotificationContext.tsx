@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { Platform, DeviceEventEmitter } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -164,6 +164,19 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // Configurar handler para mensajes
     const removeMessageHandler = wsService.onMessage(async (message: WebSocketMessage) => {
       console.log('📨 Mensaje WebSocket en NotificationContext:', message.tipo);
+
+      // Manejar nuevos recordatorios
+      if (message.tipo === 'nuevo_recordatorio' && message.recordatorio) {
+        const recordatorio = message.recordatorio;
+        console.log('📅 Nuevo recordatorio recibido via WebSocket:', recordatorio);
+
+        // Disparar evento personalizado para refrescar vistas
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('nueva-alerta', { detail: { tipo: 'recordatorio', recordatorio } }));
+        }
+
+        return; // No continuar con otros procesamientos
+      }
 
       // Manejar confirmaciones de "YA VOY" para adultos mayores
       if (message.tipo === 'confirmacion_alerta') {
@@ -330,16 +343,44 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         // 3. Configurar listeners para notificaciones
         // Listener para notificaciones recibidas (app en foreground)
         notificationListener.current = addNotificationReceivedListener((notification) => {
-          console.log('Notificación recibida en foreground:', notification);
+          console.log('📱 Notificación recibida en foreground:', notification);
           setNotification(notification);
+
+          // Disparar evento personalizado para que las vistas se refresquen
+          const data = notification.request.content.data;
+          const tipo = data?.tipo || 'nueva_alerta';
+
+          console.log('📱 Disparando evento de notificación:', tipo);
+
+          // Para móvil: usar DeviceEventEmitter
+          DeviceEventEmitter.emit('nueva-alerta', {
+            tipo,
+            data,
+            notification
+          });
+
+          // Para web: usar window.dispatchEvent (si está disponible)
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('nueva-alerta', {
+              detail: { tipo, data, notification }
+            }));
+          }
         });
 
         // Listener para cuando el usuario toca una notificación
         responseListener.current = addNotificationResponseReceivedListener((response) => {
-          console.log('Usuario tocó la notificación:', response);
+          console.log('📱 Usuario tocó la notificación:', response);
 
           // Navegar según el tipo de notificación
           const data = response.notification.request.content.data;
+
+          // Disparar evento antes de navegar
+          console.log('📱 Disparando evento antes de navegar');
+          DeviceEventEmitter.emit('nueva-alerta', {
+            tipo: data?.tipo || 'nueva_alerta',
+            data,
+            notification: response.notification
+          });
 
           if (data?.tipo === 'alerta') {
             router.push('/cuidador/alertas' as any);

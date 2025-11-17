@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ActivityIndicator, Button,
-    Pressable, ScrollView, Platform, Modal
+    Pressable, ScrollView, Platform, Modal, DeviceEventEmitter
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import axios, { AxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
@@ -472,28 +472,26 @@ export default function IndexScreen() {
     fetchAllData();
   }, [user, isAuthenticated, refetchDashboardData]);
 
-  // Escuchar eventos de WebSocket para actualizar el dashboard automáticamente
+  // Escuchar eventos de notificaciones para actualizar el dashboard automáticamente (web + móvil)
   useEffect(() => {
-    if (Platform.OS !== 'web' || !user || !isAuthenticated || !userProfile) {
+    if (!user || !isAuthenticated || !userProfile) {
       return;
     }
 
-    // Listener para nuevas alertas (CUIDADORES)
-    const handleNuevaAlerta = async (event: Event) => {
-      const customEvent = event as CustomEvent;
-      console.log('🔔 Evento nueva-alerta recibido en index.tsx', customEvent.detail);
+    // Listener para nuevas alertas y recordatorios (CUIDADORES Y ADULTOS MAYORES)
+    const handleNuevaAlerta = async (eventData?: any) => {
+      console.log('🔔 Evento nueva-alerta recibido en index.tsx', eventData);
 
-      if (userProfile.rol === 'cuidador') {
-        // Refrescar todos los datos del dashboard para cuidadores
-        console.log('🔄 Refrescando dashboard de cuidador por nueva alerta...');
+      if (userProfile.rol === 'cuidador' || userProfile.rol === 'adulto_mayor') {
+        // Refrescar todos los datos del dashboard
+        console.log('🔄 Refrescando dashboard por nueva alerta/recordatorio...');
         await refetchDashboardData(true);
       }
     };
 
     // Listener para confirmaciones de alerta (ADULTOS MAYORES)
-    const handleConfirmacionAlerta = async (event: Event) => {
-      const customEvent = event as CustomEvent;
-      console.log('💙 Evento confirmacion-alerta recibido en index.tsx', customEvent.detail);
+    const handleConfirmacionAlerta = async (eventData?: any) => {
+      console.log('💙 Evento confirmacion-alerta recibido en index.tsx', eventData);
 
       if (userProfile.rol === 'adulto_mayor') {
         // Refrescar alertas para mostrar el estado actualizado
@@ -502,15 +500,46 @@ export default function IndexScreen() {
       }
     };
 
-    // Registrar listeners
-    window.addEventListener('nueva-alerta', handleNuevaAlerta);
-    window.addEventListener('confirmacion-alerta', handleConfirmacionAlerta);
+    if (Platform.OS === 'web') {
+      // En web: escuchar eventos de window (WebSocket)
+      const handleNuevaAlertaWeb = (event: Event) => {
+        const customEvent = event as CustomEvent;
+        handleNuevaAlerta(customEvent.detail);
+      };
 
-    return () => {
-      window.removeEventListener('nueva-alerta', handleNuevaAlerta);
-      window.removeEventListener('confirmacion-alerta', handleConfirmacionAlerta);
-    };
+      const handleConfirmacionAlertaWeb = (event: Event) => {
+        const customEvent = event as CustomEvent;
+        handleConfirmacionAlerta(customEvent.detail);
+      };
+
+      window.addEventListener('nueva-alerta', handleNuevaAlertaWeb);
+      window.addEventListener('confirmacion-alerta', handleConfirmacionAlertaWeb);
+
+      return () => {
+        window.removeEventListener('nueva-alerta', handleNuevaAlertaWeb);
+        window.removeEventListener('confirmacion-alerta', handleConfirmacionAlertaWeb);
+      };
+    } else {
+      // En móvil: escuchar eventos de DeviceEventEmitter (Push notifications)
+      const subscription1 = DeviceEventEmitter.addListener('nueva-alerta', handleNuevaAlerta);
+      const subscription2 = DeviceEventEmitter.addListener('confirmacion-alerta', handleConfirmacionAlerta);
+
+      return () => {
+        subscription1.remove();
+        subscription2.remove();
+      };
+    }
   }, [user, isAuthenticated, userProfile, refetchDashboardData]);
+
+  // Refresh automático cuando la vista recibe foco (útil en móvil cuando vuelves a la app)
+  useFocusEffect(
+    useCallback(() => {
+      if (isAuthenticated && user && userProfile) {
+        console.log('[INDEX] Vista enfocada, refrescando dashboard...');
+        refetchDashboardData(true);
+      }
+    }, [isAuthenticated, user, userProfile, refetchDashboardData])
+  );
 
   // Función para enviar alerta de ayuda
   const enviarAlertaAyuda = useCallback(async () => {
@@ -695,35 +724,51 @@ export default function IndexScreen() {
               )}
             </View>
 
-            <Text style={styles.sectionTitle}>Próximos Recordatorios (Todos)</Text>
+            <Text style={styles.sectionTitle}>Próximos Recordatorios</Text>
 
             <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/recordatorios')}>
                <CalendarCheck size={16} color="#374151" style={{ marginRight: 8 }} />
-               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver Todos los Recordatorios</Text>
+               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver Historial Completo</Text>
             </Pressable>
 
-            {recordatorios.length > 0 ? (
+            {(() => {
+              // Filtrar solo recordatorios futuros
+              const recordatoriosFuturos = recordatorios.filter(rec =>
+                new Date(rec.fecha_hora_programada) > new Date()
+              );
+
+              return recordatoriosFuturos.length > 0 ? (
                 <>
-                  {recordatorios.slice(0, 3).map((rec) => ( // Mostrar los 3 más próximos
+                  {recordatoriosFuturos.slice(0, 3).map((rec) => { // Mostrar los 3 más próximos
+                    const fechaRec = new Date(rec.fecha_hora_programada);
+                    const esHoy = fechaRec.toDateString() === new Date().toDateString();
+                    const fechaFormateada = esHoy
+                      ? 'Hoy'
+                      : fechaRec.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+                    const horaFormateada = fechaRec.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+                    return (
                       <AlertPreviewCard
                           key={`rec-${rec.id}`}
                           alert={{
                               id: `rec-${rec.id}`,
-                              type: 'info', // Todos los recordatorios son 'info'
-                              title: `Recordatorio: ${rec.titulo}`,
+                              type: 'info',
+                              title: rec.titulo,
                               message: rec.nombre_adulto_mayor
-                                  ? `${rec.nombre_adulto_mayor} - ${rec.descripcion || 'Sin descripción'}`
-                                  : rec.descripcion || 'Sin descripción',
-                              timestamp: new Date(rec.fecha_hora_programada),
-                              read: rec.estado !== 'pendiente'
+                                  ? `${rec.nombre_adulto_mayor} · ${fechaFormateada} · ${horaFormateada}`
+                                  : `${fechaFormateada} · ${horaFormateada}`,
+                              timestamp: fechaRec,
+                              read: rec.estado !== 'activo'
                           }}
                           // NO pasamos onPressAction => sin botón YA VOY
                       />
-                  ))}
+                    );
+                  })}
                 </>
-            ) : (
+              ) : (
                 <Text style={styles.noAlerts}>No hay recordatorios próximos.</Text>
-            )}
+              );
+            })()}
           </>
         )}
 
@@ -833,11 +878,17 @@ export default function IndexScreen() {
             <Text style={styles.sectionTitle}>Mis Próximos Recordatorios</Text>
 
             <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/recordatorios')}>
-               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver todos mis recordatorios</Text>
+               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver historial completo</Text>
             </Pressable>
 
-            {recordatorios.length > 0 ? (
-                recordatorios.slice(0, 5).map(rec => ( // Mostrar solo los 5 más próximos
+            {(() => {
+              // Filtrar solo recordatorios futuros
+              const recordatoriosFuturos = recordatorios.filter(rec =>
+                new Date(rec.fecha_hora_programada) > new Date()
+              );
+
+              return recordatoriosFuturos.length > 0 ? (
+                recordatoriosFuturos.slice(0, 5).map(rec => ( // Mostrar solo los 5 más próximos
                     <Pressable
                         key={rec.id}
                         style={styles.simpleCard}
@@ -851,9 +902,10 @@ export default function IndexScreen() {
                         <Text style={styles.simpleCardDate}>{formatFecha(rec.fecha_hora_programada)} - {formatHora(rec.fecha_hora_programada)}</Text>
                     </Pressable>
                 ))
-            ) : (
-                <Text style={styles.placeholderText}>No tienes recordatorios programados.</Text>
-            )}
+              ) : (
+                <Text style={styles.placeholderText}>No tienes recordatorios próximos programados.</Text>
+              );
+            })()}
           </>
         )}
         

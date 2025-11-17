@@ -400,6 +400,98 @@ async def get_stats():
     }
 
 
+@app.post("/internal/notify-recordatorio")
+async def notify_recordatorio(
+    recordatorio_data: dict,
+    x_internal_key: str = Header(None, alias="X-Internal-Key")
+):
+    """
+    Endpoint interno para notificar cuando se crea/actualiza un recordatorio.
+    Envía notificación a cuidadores y adultos mayores relacionados.
+    """
+    # Verificar clave interna
+    INTERNAL_KEY = os.environ.get("INTERNAL_API_KEY", "").strip()
+
+    if INTERNAL_KEY and x_internal_key and x_internal_key.strip() != INTERNAL_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Clave interna inválida"
+        )
+
+    adulto_mayor_id = recordatorio_data.get("adulto_mayor_id")
+
+    if not adulto_mayor_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="adulto_mayor_id es requerido"
+        )
+
+    try:
+        # Obtener firebase_uids de cuidadores Y del adulto mayor
+        with engine.connect() as conn:
+            # Obtener cuidadores
+            result_cuidadores = conn.execute(
+                text("""
+                    SELECT u.firebase_uid, u.nombre
+                    FROM cuidadores_adultos_mayores cam
+                    JOIN usuarios u ON cam.usuario_id = u.id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                """),
+                {"adulto_mayor_id": adulto_mayor_id}
+            )
+            cuidadores = result_cuidadores.fetchall()
+
+            # Obtener adulto mayor
+            result_adulto = conn.execute(
+                text("""
+                    SELECT u.firebase_uid, u.nombre
+                    FROM adultos_mayores am
+                    JOIN usuarios u ON am.usuario_id = u.id
+                    WHERE am.id = :adulto_mayor_id
+                """),
+                {"adulto_mayor_id": adulto_mayor_id}
+            )
+            adulto_mayor = result_adulto.fetchone()
+
+        # Construir mensaje de notificación
+        mensaje = {
+            "tipo": "nuevo_recordatorio",
+            "recordatorio": recordatorio_data,
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Enviar a todos los usuarios relacionados
+        firebase_uids = [c[0] for c in cuidadores]
+        if adulto_mayor:
+            firebase_uids.append(adulto_mayor[0])
+
+        if not firebase_uids:
+            return {
+                "success": True,
+                "message": "No hay usuarios relacionados",
+                "notified_count": 0
+            }
+
+        results = await manager.broadcast_to_multiple(mensaje, firebase_uids)
+        notified_count = sum(1 for success in results.values() if success)
+
+        print(f"📢 Recordatorio enviado a {notified_count}/{len(firebase_uids)} usuarios conectados")
+
+        return {
+            "success": True,
+            "message": f"Notificación enviada a {notified_count} usuarios",
+            "total_usuarios": len(firebase_uids),
+            "notified_count": notified_count
+        }
+
+    except Exception as e:
+        print(f"❌ Error al notificar recordatorio: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al enviar notificación: {str(e)}"
+        )
+
+
 @app.post("/internal/notify-confirmation")
 async def notify_confirmation(
     confirmation_data: dict,

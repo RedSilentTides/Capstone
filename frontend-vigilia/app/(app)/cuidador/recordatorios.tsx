@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable,
-    Platform, TextInput, Modal, RefreshControl
+    Platform, TextInput, Modal, RefreshControl, DeviceEventEmitter
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -182,6 +182,69 @@ export default function RecordatoriosScreen() {
             fetchRecordatorios();
         }
     }, [adultoMayorId, userProfile, fetchRecordatorios, router]);
+
+    // Escuchar eventos de notificaciones para actualizar recordatorios automáticamente (web + móvil)
+    useEffect(() => {
+        if (!user || !userProfile) {
+            return;
+        }
+
+        // Listener para nuevas alertas - refrescar recordatorios también
+        const handleNuevaAlerta = async (eventData?: any) => {
+            console.log('[RECORDATORIOS] 🔔 Evento nueva-alerta recibido', eventData);
+
+            // Refrescar recordatorios silenciosamente
+            await fetchRecordatorios(true);
+        };
+
+        // Listener para confirmaciones de alerta - refrescar recordatorios también
+        const handleConfirmacionAlerta = async (eventData?: any) => {
+            console.log('[RECORDATORIOS] 💙 Evento confirmacion-alerta recibido', eventData);
+
+            // Refrescar recordatorios silenciosamente
+            await fetchRecordatorios(true);
+        };
+
+        if (Platform.OS === 'web') {
+            // En web: escuchar eventos de window (WebSocket)
+            const handleNuevaAlertaWeb = (event: Event) => {
+                const customEvent = event as CustomEvent;
+                handleNuevaAlerta(customEvent.detail);
+            };
+
+            const handleConfirmacionAlertaWeb = (event: Event) => {
+                const customEvent = event as CustomEvent;
+                handleConfirmacionAlerta(customEvent.detail);
+            };
+
+            window.addEventListener('nueva-alerta', handleNuevaAlertaWeb);
+            window.addEventListener('confirmacion-alerta', handleConfirmacionAlertaWeb);
+
+            return () => {
+                window.removeEventListener('nueva-alerta', handleNuevaAlertaWeb);
+                window.removeEventListener('confirmacion-alerta', handleConfirmacionAlertaWeb);
+            };
+        } else {
+            // En móvil: escuchar eventos de DeviceEventEmitter (Push notifications)
+            const subscription1 = DeviceEventEmitter.addListener('nueva-alerta', handleNuevaAlerta);
+            const subscription2 = DeviceEventEmitter.addListener('confirmacion-alerta', handleConfirmacionAlerta);
+
+            return () => {
+                subscription1.remove();
+                subscription2.remove();
+            };
+        }
+    }, [user, userProfile, fetchRecordatorios]);
+
+    // Refresh automático cuando la vista recibe foco (útil en móvil cuando tocas una notificación)
+    useFocusEffect(
+        useCallback(() => {
+            if (userProfile && (adultoMayorId !== null || userProfile.rol === 'adulto_mayor')) {
+                console.log('[RECORDATORIOS] Vista enfocada, refrescando datos...');
+                fetchRecordatorios(true);
+            }
+        }, [userProfile, adultoMayorId, fetchRecordatorios])
+    );
 
     const handleRefresh = () => {
         setRefreshing(true);
