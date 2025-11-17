@@ -17,6 +17,7 @@ interface ToastMessage {
     type: ToastType;
     title: string;
     message: string;
+    persistent?: boolean; // Si es true, no se auto-cierra
 }
 
 interface ConfirmOptions {
@@ -31,6 +32,7 @@ interface ConfirmOptions {
 
 interface ToastContextType {
     showToast: (type: ToastType, title: string, message: string) => void;
+    showPersistentToast: (type: ToastType, title: string, message: string) => void;
     showConfirm: (options: ConfirmOptions) => void;
 }
 
@@ -50,7 +52,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 
     const showToast = (type: ToastType, title: string, message: string) => {
         const id = Date.now().toString();
-        const newToast: ToastMessage = { id, type, title, message };
+        const newToast: ToastMessage = { id, type, title, message, persistent: false };
 
         setToasts(prev => [...prev, newToast]);
 
@@ -58,6 +60,15 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         setTimeout(() => {
             setToasts(prev => prev.filter(t => t.id !== id));
         }, 4000);
+    };
+
+    const showPersistentToast = (type: ToastType, title: string, message: string) => {
+        const id = Date.now().toString();
+        const newToast: ToastMessage = { id, type, title, message, persistent: true };
+
+        setToasts(prev => [...prev, newToast]);
+
+        // NO auto-remove - requiere acción manual del usuario
     };
 
     const showConfirm = (options: ConfirmOptions) => {
@@ -73,7 +84,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <ToastContext.Provider value={{ showToast, showConfirm }}>
+        <ToastContext.Provider value={{ showToast, showPersistentToast, showConfirm }}>
             {children}
 
             {/* Toast Container */}

@@ -2058,6 +2058,44 @@ async def procesar_recordatorios_pendientes(
 
                 print(f"📊 Notificaciones enviadas - Push: {push_count}, Email: {email_count}, WhatsApp: {whatsapp_count}")
 
+                # 4. Enviar notificación WebSocket para actualizar dashboard en tiempo real
+                try:
+                    websocket_url = os.environ.get("WEBSOCKET_SERVICE_URL", "https://alertas-websocket-687053793381.southamerica-west1.run.app")
+                    internal_key = os.environ.get("INTERNAL_API_KEY", "").strip()
+
+                    # Convertir fecha_hora_programada a timezone de Chile para mostrar en dashboard
+                    chile_tz = pytz.timezone('America/Santiago')
+                    if fecha_hora_programada.tzinfo is None:
+                        fecha_hora_chile = pytz.utc.localize(fecha_hora_programada).astimezone(chile_tz)
+                    else:
+                        fecha_hora_chile = fecha_hora_programada.astimezone(chile_tz)
+
+                    recordatorio_dict = {
+                        "id": recordatorio_id,
+                        "adulto_mayor_id": adulto_mayor_id,
+                        "titulo": titulo,
+                        "descripcion": descripcion,
+                        "fecha_hora_programada": fecha_hora_chile.isoformat(),
+                        "frecuencia": frecuencia,
+                        "estado": "enviado",
+                        "nombre_adulto_mayor": nombre_adulto_mayor
+                    }
+
+                    ws_response = requests.post(
+                        f"{websocket_url}/internal/notify-recordatorio",
+                        json=recordatorio_dict,
+                        headers={"X-Internal-Key": internal_key},
+                        timeout=5
+                    )
+
+                    if ws_response.status_code == 200:
+                        ws_data = ws_response.json()
+                        print(f"🌐 Notificación WebSocket enviada: {ws_data.get('notified_count', 0)} usuarios conectados")
+                    else:
+                        print(f"⚠️  Error al enviar WebSocket: {ws_response.status_code}")
+                except Exception as ws_error:
+                    print(f"⚠️  Error al notificar via WebSocket: {str(ws_error)}")
+
                 # 5. Actualizar estado del recordatorio o crear siguiente instancia
                 if frecuencia == 'una_vez':
                     # Marcar como enviado (estados válidos: pendiente, enviado, confirmado, omitido)

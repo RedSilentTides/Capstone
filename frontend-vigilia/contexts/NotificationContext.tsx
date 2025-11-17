@@ -47,7 +47,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
   const { user, isAuthenticated } = useAuth();
-  const { showToast } = useToast();
+  const { showToast, showPersistentToast } = useToast();
   const router = useRouter();
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
@@ -169,6 +169,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (message.tipo === 'nuevo_recordatorio' && message.recordatorio) {
         const recordatorio = message.recordatorio;
         console.log('📅 Nuevo recordatorio recibido via WebSocket:', recordatorio);
+
+        // Mostrar notificación visual persistente (sin auto-cierre)
+        const titulo = recordatorio.titulo || 'Recordatorio';
+        const nombreAdulto = recordatorio.nombre_adulto_mayor || '';
+        const mensaje = nombreAdulto ? `Recordatorio para ${nombreAdulto}` : 'Tienes un recordatorio pendiente';
+
+        showPersistentToast('info', `📅 ${titulo}`, mensaje);
 
         // Disparar evento personalizado para refrescar vistas
         if (typeof window !== 'undefined') {
