@@ -11,9 +11,7 @@
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "enableProguardInReleaseBuilds": false,
-        "enableHermes": false
+        "buildType": "apk"
       }
     },
     "production": {
