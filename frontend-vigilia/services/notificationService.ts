@@ -31,17 +31,27 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     });
   }
 
-  if (Device.isDevice) {
+  // Permitir emuladores Android/iOS además de dispositivos físicos
+  // Solo bloquear en web o en plataformas no soportadas
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    console.log('📱 Iniciando registro de push notifications...');
+    console.log('   Plataforma:', Platform.OS);
+    console.log('   Es dispositivo físico:', Device.isDevice);
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
+    console.log('   Estado de permisos actual:', existingStatus);
+
     if (existingStatus !== 'granted') {
+      console.log('   Solicitando permisos de notificación...');
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
+      console.log('   Permisos otorgados:', status);
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Error: No se obtuvieron permisos de notificación push');
+      console.log('❌ Error: No se obtuvieron permisos de notificación push');
       return null;
     }
 
@@ -70,6 +80,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     } catch (e: any) {
       console.error('❌ Error al obtener el push token');
       console.error('   Error:', e.message || e);
+      console.error('   Stack:', e.stack);
 
       if (e.message?.includes('projectId')) {
         console.log('\n⚠️  MODO DESARROLLO SIN PUSH REMOTO:');
@@ -83,7 +94,8 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       }
     }
   } else {
-    console.log('Las notificaciones push solo funcionan en dispositivos físicos');
+    console.log('⚠️ Las notificaciones push solo funcionan en Android/iOS');
+    console.log('   Plataforma actual:', Platform.OS);
   }
 
   return token;
