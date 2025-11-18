@@ -88,7 +88,15 @@
       "Bash(eas secret:create:*)",
       "Bash(call setup-eas-env.bat)",
       "Bash(cmd /c \"c:\\Users\\acuri\\Documents\\Vigilia\\Capstone\\frontend-vigilia\\setup-eas-env.bat\")",
-      "Bash(eas env:create:*)"
+      "Bash(eas env:create:*)",
+      "Bash(gcloud config get-value:*)",
+      "Bash(\"c:\\Users\\acuri\\recent_logs.json\")",
+      "Bash(Select-String \"push.*token|POST /usuarios|Registrando push\")",
+      "Bash(firebase apps:create:*)",
+      "Bash(firebase apps:sdkconfig:*)",
+      "Bash(\"c:\\Users\\acuri\\recent_logs.json\" 2)",
+      "Bash(\"c:\\Users\\acuri\\backend_full_logs.txt\" 2)",
+      "Bash(del /Q \"c:\\Users\\acuri\\recent_logs.json\" \"c:\\Users\\acuri\\backend_full_logs.txt\" 2)"
     ],
     "deny": [],
     "ask": []
