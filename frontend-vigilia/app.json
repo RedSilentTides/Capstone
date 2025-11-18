@@ -2,7 +2,7 @@
   "expo": {
     "name": "vigilia-app",
     "slug": "vigilia-app",
-    "owner": "vigilia-team",
+    "owner": "angeloacc",
     "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -12,7 +12,9 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -24,7 +26,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "useNextNotificationsApi": true
+      "useNextNotificationsApi": true,
+      "package": "com.angeloacc.vigiliaapp"
     },
     "web": {
       "output": "static",
@@ -50,13 +53,21 @@
         {
           "icon": "./assets/images/icon.png",
           "color": "#1B4965",
-          "sounds": ["./assets/sounds/notification.wav"]
+          "sounds": [
+            "./assets/sounds/notification.wav"
+          ]
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "24251c94-3902-491b-b28b-b600447c88dd"
+      }
     }
   }
 }

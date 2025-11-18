@@ -7,9 +7,6 @@ import { useToast } from '../../contexts/ToastContext';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
-// URL del webhook de WhatsApp (desplegado en GCP)
-const WHATSAPP_WEBHOOK_URL = 'https://whatsapp-webhook-687053793381.southamerica-west1.run.app';
-const WHATSAPP_API_KEY = 'bfc79d65d767'; // IMPORTANTE: Cambia esto por el API_KEY que configuraste en GCP Secret Manager
 
 // Tipo para los datos de configuración que esperamos/enviamos
 interface AlertConfig {
@@ -29,10 +26,8 @@ export default function ConfiguracionScreen() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const [config, setConfig] = useState<Partial<AlertConfig>>({}); // Usamos Partial para estado inicial
-  const [originalConfig, setOriginalConfig] = useState<Partial<AlertConfig>>({}); // Para detectar cambios
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSendingTest, setIsSendingTest] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Función para cargar la configuración actual
@@ -55,7 +50,6 @@ export default function ConfiguracionScreen() {
           email_secundario: response.data.email_secundario ?? '',
       };
       setConfig(loadedConfig);
-      setOriginalConfig(loadedConfig); // Guardar estado original
       console.log('Configuración obtenida:', response.data);
     } catch (err) {
       console.error('Error al obtener configuración:', err);
@@ -75,57 +69,6 @@ export default function ConfiguracionScreen() {
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]); // fetchConfig está envuelta en useCallback
-
-  // Función para enviar mensaje de prueba de WhatsApp
-  const handleSendTestWhatsApp = async () => {
-    if (!config.numero_whatsapp) {
-      showToast('error', 'Error', 'Por favor, ingresa un número de WhatsApp primero.');
-      return;
-    }
-
-    setIsSendingTest(true);
-
-    try {
-      console.log('Enviando mensaje de prueba a WhatsApp...');
-      const response = await axios.post(
-        `${WHATSAPP_WEBHOOK_URL}/send-template`,
-        {
-          to: config.numero_whatsapp.replace(/\+/g, ''), // Remover el + si existe
-          template_name: 'hello_world',
-          language_code: 'en_US'
-        },
-        {
-          headers: {
-            'X-API-Key': WHATSAPP_API_KEY,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      if (response.data.status === 'sent') {
-        showToast(
-          'success',
-          'Mensaje Enviado',
-          `Se envió un mensaje de prueba a ${config.numero_whatsapp}. Revisa tu WhatsApp!`
-        );
-      }
-    } catch (err) {
-      console.error('Error al enviar mensaje de WhatsApp:', err);
-      let errorMessage = 'No se pudo enviar el mensaje de WhatsApp.';
-
-      if (axios.isAxiosError(err)) {
-        if (err.code === 'ECONNREFUSED' || err.message.includes('Network Error')) {
-          errorMessage = 'No se pudo conectar al servicio de WhatsApp. Verifica que esté desplegado.';
-        } else if (err.response?.data?.detail) {
-          errorMessage = err.response.data.detail;
-        }
-      }
-
-      showToast('error', 'Error', errorMessage);
-    } finally {
-      setIsSendingTest(false);
-    }
-  };
 
   // Función para guardar los cambios
   const handleSaveChanges = async () => {
@@ -156,46 +99,13 @@ export default function ConfiguracionScreen() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Solo enviar mensaje de bienvenida si WhatsApp se ACABA DE ACTIVAR
-      const wasWhatsAppDisabled = !originalConfig.notificar_whatsapp;
-      const isWhatsAppNowEnabled = config.notificar_whatsapp;
-      const shouldSendWelcome = wasWhatsAppDisabled && isWhatsAppNowEnabled && config.numero_whatsapp;
+      // Mostrar feedback de éxito
+      showToast('success', '✅ Configuración guardada', 'Tus preferencias de notificación se actualizaron correctamente.');
 
-      if (shouldSendWelcome) {
-        try {
-          console.log('Enviando mensaje de bienvenida por WhatsApp (primera activación)...');
-          await axios.post(
-            `${WHATSAPP_WEBHOOK_URL}/send-template`,
-            {
-              to: config.numero_whatsapp.replace(/\+/g, ''),
-              template_name: 'hello_world',
-              language_code: 'en_US'
-            },
-            {
-              headers: {
-                'X-API-Key': WHATSAPP_API_KEY,
-                'Content-Type': 'application/json'
-              }
-            }
-          );
-          console.log('Mensaje de bienvenida enviado');
-        } catch (whatsappErr) {
-          console.error('Error al enviar mensaje de bienvenida:', whatsappErr);
-          // No bloqueamos el guardado si falla el mensaje
-        }
-      }
-
-      // Actualizar configuración original después de guardar
-      setOriginalConfig({
-        ...config,
-        numero_whatsapp: config.numero_whatsapp || null,
-        email_secundario: config.email_secundario || null,
-      });
-
-      showToast('success', 'Éxito', 'Configuración guardada correctamente.' +
-        (shouldSendWelcome ? ' Se envió un mensaje de bienvenida a tu WhatsApp!' : ''));
-      // Opcional: Volver a cargar la config para confirmar, o simplemente asumir éxito
-      // fetchConfig();
+      // Redirigir al index después de 1 segundo
+      setTimeout(() => {
+        router.push('/');
+      }, 1000);
     } catch (err) {
       console.error('Error al guardar configuración:', err);
        if (axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)) {
@@ -266,25 +176,14 @@ export default function ConfiguracionScreen() {
         />
       </View>
       {config.notificar_whatsapp && ( // Mostrar input solo si está activado
-        <>
-          <TextInput
-            style={styles.input}
-            placeholder="Número de WhatsApp (ej. 56957342441)"
-            value={config.numero_whatsapp || ''}
-            onChangeText={(text) => setConfig(prev => ({ ...prev, numero_whatsapp: text }))}
-            keyboardType="phone-pad"
-            textContentType="telephoneNumber"
-          />
-          <Pressable
-            style={[styles.testButton, isSendingTest && styles.buttonDisabled]}
-            onPress={handleSendTestWhatsApp}
-            disabled={isSendingTest}
-          >
-            <Text style={styles.testButtonText}>
-              {isSendingTest ? '📤 Enviando...' : '📱 Enviar Mensaje de Prueba'}
-            </Text>
-          </Pressable>
-        </>
+        <TextInput
+          style={styles.input}
+          placeholder="Número de WhatsApp (ej. 56957342441)"
+          value={config.numero_whatsapp || ''}
+          onChangeText={(text) => setConfig(prev => ({ ...prev, numero_whatsapp: text }))}
+          keyboardType="phone-pad"
+          textContentType="telephoneNumber"
+        />
       )}
       <Text style={styles.description}>Recibe mensajes de alerta urgentes vía WhatsApp.</Text>
 
@@ -388,20 +287,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  testButton: {
-    backgroundColor: '#25D366', // Color verde de WhatsApp
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#128C7E',
-  },
-  testButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
   },
    errorText: {
     color: 'red',
