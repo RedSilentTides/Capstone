@@ -27,7 +27,8 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "useNextNotificationsApi": true,
-      "package": "com.angeloacc.vigiliaapp"
+      "package": "com.angeloacc.vigiliaapp",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
