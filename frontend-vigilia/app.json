@@ -52,16 +52,12 @@
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
-          "color": "#1B4965",
-          "sounds": [
-            "./assets/sounds/notification.wav"
-          ]
+          "color": "#1B4965"
         }
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     },
     "extra": {
       "router": {},
