@@ -1130,7 +1130,7 @@ async def notificar_evento_caida(
 
                 # 2. Obtener cuidadores y sus tokens push
                 query_cuidadores = text("""
-                    SELECT u.id, u.nombre, ca.token_fcm_app, ca.notificar_app
+                    SELECT u.id, u.nombre, u.push_token, ca.notificar_app
                     FROM usuarios u
                     INNER JOIN cuidadores_adultos_mayores cam ON cam.usuario_id = u.id
                     LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
@@ -1143,7 +1143,9 @@ async def notificar_evento_caida(
                 titulo = "🚨 Alerta de Caída Detectada"
                 mensaje = f"Posible caída detectada para {nombre_adulto}"
 
-                push_tokens = [c[2] for c in cuidadores if c[3] and c[2]]  # token_fcm_app y notificar_app=True
+                # Usar u.push_token (nueva columna) en lugar de ca.token_fcm_app (obsoleta)
+                # Si notificar_app es None o True, enviar notificación (default True)
+                push_tokens = [c[2] for c in cuidadores if c[2] and (c[3] is None or c[3])]
                 if push_tokens:
                     try:
                         expo_push_url = "https://exp.host/--/api/v2/push/send"
