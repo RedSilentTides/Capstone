@@ -475,18 +475,20 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
-  // Polling para verificar nuevas alertas cada 10 segundos (solo si hay token de desarrollo)
+  // Polling para verificar nuevas alertas cada 5 segundos (en móvil, como fallback de push notifications)
   useEffect(() => {
     if (!isAuthenticated || !user || userRole !== 'cuidador') return;
 
-    // Si el token es de desarrollo, activar polling
-    if (expoPushToken && expoPushToken.startsWith('DEV-TOKEN-')) {
-      console.log('🔄 Activando polling para alertas (modo desarrollo)');
+    // En móvil (no web), siempre activar polling como fallback
+    // Esto asegura que el index se actualice incluso si las push notifications fallan (ej: emuladores)
+    if (Platform.OS !== 'web' && expoPushToken) {
+      const esDev = expoPushToken.startsWith('DEV-TOKEN-');
+      console.log(`🔄 Activando polling para alertas (${esDev ? 'modo desarrollo' : 'fallback móvil'})`);
 
       // Verificar inmediatamente
       checkForNewAlerts();
 
-      // Configurar polling cada 5 segundos (más rápido para alertas)
+      // Configurar polling cada 5 segundos
       pollingInterval.current = setInterval(checkForNewAlerts, 5000);
     }
 
