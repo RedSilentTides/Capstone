@@ -27,8 +27,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "useNextNotificationsApi": true,
-      "package": "com.angeloacc.vigiliaapp",
-      "jsEngine": "jsc"
+      "package": "com.angeloacc.vigiliaapp"
     },
     "web": {
       "output": "static",
@@ -55,7 +54,8 @@
           "icon": "./assets/images/icon.png",
           "color": "#1B4965"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
