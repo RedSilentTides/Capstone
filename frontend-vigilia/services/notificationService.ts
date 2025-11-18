@@ -50,18 +50,23 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       console.log('   App slug:', Constants.expoConfig?.slug);
       console.log('   Owner:', Constants.expoConfig?.owner);
 
-      // Intentar con projectId generado desde experienceId
-      const experienceId = `@${Constants.expoConfig?.owner || 'vigilia-team'}/${Constants.expoConfig?.slug || 'vigilia-app'}`;
+      // Para builds standalone (APK), usar el projectId de EAS
+      const easProjectId = Constants.expoConfig?.extra?.eas?.projectId;
 
-      // Usar el experienceId como projectId para Expo Go
+      if (!easProjectId) {
+        throw new Error('EAS projectId no encontrado en la configuración');
+      }
+
+      console.log('   EAS Project ID:', easProjectId);
+
+      // Usar el projectId de EAS para builds standalone
       const pushTokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: experienceId
+        projectId: easProjectId
       });
 
       token = pushTokenData.data;
       console.log('✅ Push token obtenido exitosamente!');
       console.log('   Token:', token);
-      console.log('   Experience ID usado:', experienceId);
     } catch (e: any) {
       console.error('❌ Error al obtener el push token');
       console.error('   Error:', e.message || e);
