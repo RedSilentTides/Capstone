@@ -115,7 +115,7 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
     return ultimos7Dias;
   };
 
-  // Agregar datos por hora del día
+  // Agregar datos por hora del día (todas las 24 horas)
   const getCaidasPorHora = () => {
     const horas = Array.from({ length: 24 }, (_, i) => ({
       hora: i,
@@ -128,7 +128,8 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
       horas[hora].count++;
     });
 
-    return horas.filter(h => h.count > 0); // Solo mostrar horas con caídas
+    // Retornar todas las horas para mostrar distribución completa
+    return horas;
   };
 
   const caidasPorDia = getCaidasPorDia();
@@ -210,10 +211,8 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
                 </VictoryChart>
               </View>
 
-              {/* Gráfico de distribución por hora */}
-              {caidasPorHora.length > 0 && (
-                <>
-                  <Text style={styles.chartTitle}>Distribución por Hora del Día</Text>
+              {/* Gráfico de distribución por hora (todas las 24 horas) */}
+              <Text style={styles.chartTitle}>Distribución por Hora del Día (24h)</Text>
                   <View style={styles.chartContainer}>
                     <VictoryChart
                       width={chartWidth}
@@ -246,8 +245,6 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
                       />
                     </VictoryChart>
                   </View>
-                </>
-              )}
             </>
           )}
 
