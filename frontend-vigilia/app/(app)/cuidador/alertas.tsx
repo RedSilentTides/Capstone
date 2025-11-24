@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal, Image, Animated, DeviceEventEmitter } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, Platform, RefreshControl, Modal, Image, Animated, DeviceEventEmitter, Dimensions } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart, Camera, AlertCircle } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart, Camera, AlertCircle, BarChart3, Clock, TrendingUp } from 'lucide-react-native';
 import { useAuth } from '../../../contexts/AuthContext';
 import CustomHeader from '../../../components/CustomHeader';
+import { VictoryBar, VictoryChart, VictoryAxis, VictoryTheme } from 'victory';
+import dayjs from 'dayjs';
+import 'dayjs/locale/es';
+
+dayjs.locale('es');
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -81,6 +86,182 @@ const alertConfig: Record<AlertType, { color: string; bgColor: string }> = {
   consejo: { color: '#7c3aed', bgColor: '#ede9fe' },
   sistema: { color: '#10b981', bgColor: '#d1fae5' },
 };
+
+// Componente Dashboard de Estadísticas de Caídas
+function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const screenWidth = Dimensions.get('window').width;
+  const chartWidth = Math.min(screenWidth - 48, 400);
+
+  // Agregar datos por día (últimos 7 días)
+  const getCaidasPorDia = () => {
+    const ultimos7Dias = Array.from({ length: 7 }, (_, i) => {
+      const fecha = dayjs().subtract(6 - i, 'day');
+      return {
+        fecha: fecha.format('YYYY-MM-DD'),
+        label: fecha.format('DD MMM'),
+        count: 0
+      };
+    });
+
+    eventos.forEach(evento => {
+      const fechaEvento = dayjs(evento.timestamp_alerta).format('YYYY-MM-DD');
+      const dia = ultimos7Dias.find(d => d.fecha === fechaEvento);
+      if (dia) {
+        dia.count++;
+      }
+    });
+
+    return ultimos7Dias;
+  };
+
+  // Agregar datos por hora del día
+  const getCaidasPorHora = () => {
+    const horas = Array.from({ length: 24 }, (_, i) => ({
+      hora: i,
+      label: `${i}h`,
+      count: 0
+    }));
+
+    eventos.forEach(evento => {
+      const hora = dayjs(evento.timestamp_alerta).hour();
+      horas[hora].count++;
+    });
+
+    return horas.filter(h => h.count > 0); // Solo mostrar horas con caídas
+  };
+
+  const caidasPorDia = getCaidasPorDia();
+  const caidasPorHora = getCaidasPorHora();
+  const totalCaidas = eventos.length;
+  const promedioPorDia = (totalCaidas / 7).toFixed(1);
+  const horaPico = caidasPorHora.length > 0
+    ? caidasPorHora.reduce((prev, current) => (prev.count > current.count) ? prev : current)
+    : null;
+
+  return (
+    <View style={styles.dashboardContainer}>
+      <Pressable
+        style={styles.dashboardHeader}
+        onPress={() => setIsExpanded(!isExpanded)}
+      >
+        <View style={styles.dashboardHeaderContent}>
+          <BarChart3 size={24} color="#7c3aed" />
+          <Text style={styles.dashboardTitle}>Estadísticas de Caídas</Text>
+        </View>
+        <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
+      </Pressable>
+
+      {isExpanded && (
+        <View style={styles.dashboardContent}>
+          {/* Métricas principales */}
+          <View style={styles.metricsRow}>
+            <View style={styles.metricCard}>
+              <AlertTriangle size={20} color="#ef4444" />
+              <Text style={styles.metricValue}>{totalCaidas}</Text>
+              <Text style={styles.metricLabel}>Total (7 días)</Text>
+            </View>
+            <View style={styles.metricCard}>
+              <TrendingUp size={20} color="#3b82f6" />
+              <Text style={styles.metricValue}>{promedioPorDia}</Text>
+              <Text style={styles.metricLabel}>Promedio/día</Text>
+            </View>
+            <View style={styles.metricCard}>
+              <Clock size={20} color="#7c3aed" />
+              <Text style={styles.metricValue}>{horaPico ? `${horaPico.hora}h` : '-'}</Text>
+              <Text style={styles.metricLabel}>Hora pico</Text>
+            </View>
+          </View>
+
+          {/* Gráfico de caídas por día */}
+          {totalCaidas > 0 && (
+            <>
+              <Text style={styles.chartTitle}>Caídas por Día (Últimos 7 días)</Text>
+              <View style={styles.chartContainer}>
+                <VictoryChart
+                  width={chartWidth}
+                  height={200}
+                  theme={VictoryTheme.material}
+                  padding={{ top: 20, bottom: 50, left: 50, right: 20 }}
+                  domainPadding={{ x: 20 }}
+                >
+                  <VictoryAxis
+                    tickFormat={(t) => t}
+                    style={{
+                      tickLabels: { fontSize: 10, angle: -45, textAnchor: 'end' }
+                    }}
+                  />
+                  <VictoryAxis
+                    dependentAxis
+                    tickFormat={(t) => Math.round(t)}
+                    style={{
+                      tickLabels: { fontSize: 10 }
+                    }}
+                  />
+                  <VictoryBar
+                    data={caidasPorDia}
+                    x="label"
+                    y="count"
+                    style={{
+                      data: { fill: '#ef4444' }
+                    }}
+                    barWidth={20}
+                  />
+                </VictoryChart>
+              </View>
+
+              {/* Gráfico de distribución por hora */}
+              {caidasPorHora.length > 0 && (
+                <>
+                  <Text style={styles.chartTitle}>Distribución por Hora del Día</Text>
+                  <View style={styles.chartContainer}>
+                    <VictoryChart
+                      width={chartWidth}
+                      height={200}
+                      theme={VictoryTheme.material}
+                      padding={{ top: 20, bottom: 50, left: 50, right: 20 }}
+                      domainPadding={{ x: 15 }}
+                    >
+                      <VictoryAxis
+                        tickFormat={(t) => t}
+                        style={{
+                          tickLabels: { fontSize: 10, angle: -45, textAnchor: 'end' }
+                        }}
+                      />
+                      <VictoryAxis
+                        dependentAxis
+                        tickFormat={(t) => Math.round(t)}
+                        style={{
+                          tickLabels: { fontSize: 10 }
+                        }}
+                      />
+                      <VictoryBar
+                        data={caidasPorHora}
+                        x="label"
+                        y="count"
+                        style={{
+                          data: { fill: '#7c3aed' }
+                        }}
+                        barWidth={15}
+                      />
+                    </VictoryChart>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+
+          {totalCaidas === 0 && (
+            <View style={styles.emptyState}>
+              <CheckCircle size={48} color="#10b981" />
+              <Text style={styles.emptyStateText}>No hay caídas registradas en los últimos 7 días</Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
 
 // Componente Toast para notificaciones
 function Toast({
@@ -311,6 +492,7 @@ export default function AlertasScreen() {
   const { user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [eventosCaida, setEventosCaida] = useState<EventoCaida[]>([]);
   const [recordatoriosPorAdultoMayor, setRecordatoriosPorAdultoMayor] = useState<RecordatoriosPorAdultoMayor[]>([]);
   const [expandedAdultos, setExpandedAdultos] = useState<Set<number>>(new Set());
   const [recordatoriosLeidos, setRecordatoriosLeidos] = useState<Set<number>>(new Set());
@@ -448,6 +630,9 @@ export default function AlertasScreen() {
         ];
 
         const [caidasData, alertasAyudaData, recordatoriosData] = await Promise.all(promises);
+
+        // Guardar eventos de caída originales para el dashboard
+        setEventosCaida(caidasData);
 
         const alertasCaidas = convertirEventosACaidas(caidasData);
         const alertasAyuda = convertirAlertasAyuda(alertasAyudaData);
@@ -762,6 +947,11 @@ export default function AlertasScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
           >
+            {/* Dashboard de Estadísticas de Caídas */}
+            {eventosCaida.length > 0 && (
+              <DashboardCaidas eventos={eventosCaida} />
+            )}
+
             {/* ORDEN NUEVO: 1. Caídas, 2. Ayuda, 3. Recordatorios */}
 
             {/* Sección de Alertas de Caída */}
@@ -1625,5 +1815,87 @@ const styles = StyleSheet.create({
   },
   toastCloseButton: {
     padding: 4,
+  },
+  // Estilos para Dashboard de Caídas
+  dashboardContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  dashboardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  dashboardHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dashboardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  expandIcon: {
+    fontSize: 16,
+    color: '#9ca3af',
+  },
+  dashboardContent: {
+    padding: 16,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+    gap: 8,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    gap: 4,
+  },
+  metricValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  metricLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  chartTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  chartContainer: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
   },
 });
