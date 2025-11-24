@@ -5,7 +5,7 @@
     "owner": "angeloacc",
     "version": "1.0.4",
     "orientation": "portrait",
-    "icon": "./assets/images/LogoVigilIa3.png",
+    "icon": "./assets/images/LogoVigilIa4.png",
     "scheme": "vigiliaapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
@@ -19,8 +19,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff",
-        "foregroundImage": "./assets/images/LogoVigilIa3.png"
+        "backgroundColor": "#9C4F96",
+        "foregroundImage": "./assets/images/LogoVigilIa4.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -30,14 +30,14 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/LogoVigilIa3.png"
+      "favicon": "./assets/images/LogoVigilIa4.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/LogoVigilIa3.png",
+          "image": "./assets/images/LogoVigilIa4.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -50,7 +50,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/LogoVigilIa3.png",
+          "icon": "./assets/images/LogoVigilIa4.png",
           "color": "#1B4965"
         }
       ],
