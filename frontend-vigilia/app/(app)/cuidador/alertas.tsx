@@ -211,27 +211,27 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
                 </VictoryChart>
               </View>
 
-              {/* Gráfico de distribución por hora (todas las 24 horas) */}
-              <Text style={styles.chartTitle}>Distribución por Hora del Día (24h)</Text>
+              {/* Gráfico de distribución por hora (barras horizontales para mejor visualización) */}
+              <Text style={styles.chartTitle}>Distribución por Hora del Día</Text>
                   <View style={styles.chartContainer}>
                     <VictoryChart
+                      horizontal
                       width={chartWidth}
-                      height={200}
+                      height={600}
                       theme={VictoryTheme.material}
-                      padding={{ top: 20, bottom: 50, left: 50, right: 20 }}
-                      domainPadding={{ x: 15 }}
+                      padding={{ top: 20, bottom: 20, left: 40, right: 40 }}
+                      domainPadding={{ y: 8 }}
                     >
                       <VictoryAxis
-                        tickFormat={(t) => t}
                         style={{
-                          tickLabels: { fontSize: 10, angle: -45, textAnchor: 'end' }
+                          tickLabels: { fontSize: 9 }
                         }}
                       />
                       <VictoryAxis
                         dependentAxis
                         tickFormat={(t) => Math.round(t)}
                         style={{
-                          tickLabels: { fontSize: 10 }
+                          tickLabels: { fontSize: 9 }
                         }}
                       />
                       <VictoryBar
@@ -241,7 +241,7 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
                         style={{
                           data: { fill: '#7c3aed' }
                         }}
-                        barWidth={15}
+                        barWidth={10}
                       />
                     </VictoryChart>
                   </View>
