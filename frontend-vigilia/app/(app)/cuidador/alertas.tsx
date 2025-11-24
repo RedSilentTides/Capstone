@@ -219,19 +219,23 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
                       width={chartWidth}
                       height={600}
                       theme={VictoryTheme.material}
-                      padding={{ top: 20, bottom: 20, left: 40, right: 40 }}
-                      domainPadding={{ y: 8 }}
+                      padding={{ top: 20, bottom: 30, left: 50, right: 40 }}
+                      domainPadding={{ y: 12 }}
                     >
                       <VictoryAxis
                         style={{
-                          tickLabels: { fontSize: 9 }
+                          axis: { stroke: '#374151', strokeWidth: 1 },
+                          grid: { stroke: '#d1d5db', strokeWidth: 0.8 },
+                          tickLabels: { fontSize: 9, padding: 5 }
                         }}
                       />
                       <VictoryAxis
                         dependentAxis
                         tickFormat={(t) => Math.round(t)}
                         style={{
-                          tickLabels: { fontSize: 9 }
+                          axis: { stroke: '#374151', strokeWidth: 1 },
+                          grid: { stroke: '#d1d5db', strokeWidth: 0.8 },
+                          tickLabels: { fontSize: 9, padding: 5 }
                         }}
                       />
                       <VictoryBar
