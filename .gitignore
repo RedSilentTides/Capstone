@@ -20,7 +20,7 @@ frontend-vigilia\.gitignore
 *.ps1
 .firebaserc
 firebase.json
-
+CLAUDE.md
 # Native
 .kotlin/
 *.orig.*

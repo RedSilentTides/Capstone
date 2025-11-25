@@ -43,7 +43,7 @@ export default function LoginScreen() {
     <View style={styles.container}>
       {/* ... (JSX sin cambios: Logo, Title, Inputs, Button, Link) ... */}
        <Image 
-        source={require('../../assets/images/LogoVigilIa.png')} 
+        source={require('../../assets/images/LogoVigilIa4.png')} 
         style={styles.logo}
         resizeMode="contain" 
       />

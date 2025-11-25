@@ -38,6 +38,9 @@ DB_NAME = "postgres"
 db_socket_dir = os.environ.get("DB_SOCKET_DIR", "/cloudsql")
 cloud_sql_connection_name = f"{PROJECT_ID}:{REGION}:{INSTANCE_NAME}"
 
+print(f"[DEBUG] DB_SOCKET_DIR value: '{db_socket_dir}'")
+print(f"[DEBUG] Full connection path: '{db_socket_dir}/{cloud_sql_connection_name}'")
+
 db_url = sqlalchemy_engine.URL.create(
     drivername="postgresql+psycopg2",
     username=DB_USER,
@@ -124,6 +127,7 @@ class EventoCaidaInfo(BaseModel):
     detalles_adicionales: dict | None = None
     nombre_dispositivo: str | None = None
     nombre_adulto_mayor: str | None = None
+    vista: bool | None = None
 
 class RecordatorioCreate(BaseModel):
     adulto_mayor_id: int
@@ -222,6 +226,7 @@ class RecordatorioInfo(BaseModel):
     dias_semana: list[int] | None = None
     fecha_creacion: datetime
     nombre_adulto_mayor: str | None = None
+    vista: bool | None = None  # Indica si el usuario actual ya vio este recordatorio
 
 # --- INICIO: NUEVO MODELO PARA EL ENDPOINT DE CAÍDAS ---
 class CaidaDetectada(BaseModel):
@@ -288,6 +293,18 @@ class AlertaInfo(BaseModel):
     detalles_adicionales: dict | None
     fecha_registro: datetime
     nombre_adulto_mayor: str | None = None
+    vista: bool | None = None  # Indica si el usuario actual ya vio esta alerta
+
+class AlertaVistaCreate(BaseModel):
+    alerta_id: int | None = None
+    recordatorio_id: int | None = None
+
+class AlertaVistaInfo(BaseModel):
+    id: int
+    usuario_id: int
+    alerta_id: int | None
+    recordatorio_id: int | None
+    fecha_vista: datetime
 
 # --- Seguridad y Autenticación ---
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -971,10 +988,12 @@ def get_eventos_caida(
                         a.notas,
                         a.detalles_adicionales,
                         d.nombre_dispositivo,
-                        am.nombre_completo as nombre_adulto_mayor
+                        am.nombre_completo as nombre_adulto_mayor,
+                        CASE WHEN av.id IS NOT NULL THEN TRUE ELSE FALSE END as vista
                     FROM alertas a
                     JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
                     LEFT JOIN dispositivos d ON a.dispositivo_id = d.id
+                    LEFT JOIN alertas_vistas av ON a.id = av.alerta_id AND av.usuario_id = :usuario_id
                     WHERE am.usuario_id = :usuario_id
                         AND a.tipo_alerta = 'caida'
                     ORDER BY a.timestamp_alerta DESC
@@ -1000,10 +1019,12 @@ def get_eventos_caida(
                         a.notas,
                         a.detalles_adicionales,
                         d.nombre_dispositivo,
-                        am.nombre_completo as nombre_adulto_mayor
+                        am.nombre_completo as nombre_adulto_mayor,
+                        CASE WHEN av.id IS NOT NULL THEN TRUE ELSE FALSE END as vista
                     FROM alertas a
                     JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
                     LEFT JOIN dispositivos d ON a.dispositivo_id = d.id
+                    LEFT JOIN alertas_vistas av ON a.id = av.alerta_id AND av.usuario_id = :cuidador_id
                     JOIN cuidadores_adultos_mayores cam ON am.id = cam.adulto_mayor_id
                     WHERE cam.usuario_id = :cuidador_id
                         AND a.tipo_alerta = 'caida'
@@ -1707,11 +1728,13 @@ def get_recordatorios(
     try:
         with engine.connect() as db_conn:
             select_clause = """
-                SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.tipo_recordatorio, r.dias_semana, r.fecha_creacion, am.nombre_completo as nombre_adulto_mayor
+                SELECT r.id, r.adulto_mayor_id, r.titulo, r.descripcion, r.fecha_hora_programada, r.frecuencia, r.estado, r.tipo_recordatorio, r.dias_semana, r.fecha_creacion, am.nombre_completo as nombre_adulto_mayor,
+                       CASE WHEN av.id IS NOT NULL THEN TRUE ELSE FALSE END as vista
                 FROM recordatorios r
-                LEFT JOIN adultos_mayores am ON r.adulto_mayor_id = am.id """
+                LEFT JOIN adultos_mayores am ON r.adulto_mayor_id = am.id
+                LEFT JOIN alertas_vistas av ON r.id = av.recordatorio_id AND av.usuario_id = :usuario_id """
             where_clauses = []
-            params = {"limit": limit, "offset": skip}
+            params = {"limit": limit, "offset": skip, "usuario_id": user_info.id}
 
             if user_info.rol in ['cuidador', 'administrador']:
                 if adulto_mayor_id is not None:
@@ -1756,6 +1779,11 @@ def get_recordatorios(
 
             results = db_conn.execute(query, params).fetchall()
             print(f"✅ Encontrados {len(results)} recordatorios.")
+
+            # Debug: Log first result to verify 'vista' field
+            if results:
+                print(f"[DEBUG] Campos en resultado: {list(results[0]._mapping.keys())}")
+                print(f"[DEBUG] Primer recordatorio: id={results[0].id}, vista={results[0]._mapping.get('vista', 'FIELD_MISSING')}")
 
             recordatorios = [RecordatorioInfo(**row._mapping) for row in results]
             return recordatorios
@@ -2919,26 +2947,36 @@ def get_alertas(
                         detail="No tienes permiso para ver alertas de este adulto mayor."
                     )
                 query_alertas = text("""
-                    SELECT a.*, am.nombre_completo as nombre_adulto_mayor
+                    SELECT a.*, am.nombre_completo as nombre_adulto_mayor,
+                           CASE WHEN av.id IS NOT NULL THEN TRUE ELSE FALSE END as vista
                     FROM alertas a
                     JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                    LEFT JOIN alertas_vistas av ON a.id = av.alerta_id AND av.usuario_id = :usuario_id
                     WHERE a.adulto_mayor_id = :adulto_mayor_id
                     ORDER BY a.timestamp_alerta DESC
                 """)
-                params = {"adulto_mayor_id": adulto_mayor_id}
+                params = {"adulto_mayor_id": adulto_mayor_id, "usuario_id": user_info.id}
             else:
                 # Obtener todas las alertas de todos sus adultos mayores
                 placeholders = ','.join([f':id{i}' for i in range(len(adultos_ids))])
                 query_alertas = text(f"""
-                    SELECT a.*, am.nombre_completo as nombre_adulto_mayor
+                    SELECT a.*, am.nombre_completo as nombre_adulto_mayor,
+                           CASE WHEN av.id IS NOT NULL THEN TRUE ELSE FALSE END as vista
                     FROM alertas a
                     JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                    LEFT JOIN alertas_vistas av ON a.id = av.alerta_id AND av.usuario_id = :usuario_id
                     WHERE a.adulto_mayor_id IN ({placeholders})
                     ORDER BY a.timestamp_alerta DESC
                 """)
                 params = {f'id{i}': aid for i, aid in enumerate(adultos_ids)}
+                params["usuario_id"] = user_info.id
 
             alertas_result = db_conn.execute(query_alertas, params).fetchall()
+
+            # Debug: Log first result to verify 'vista' field
+            if alertas_result:
+                print(f"[DEBUG ALERTAS] Campos en resultado: {list(alertas_result[0]._mapping.keys())}")
+                print(f"[DEBUG ALERTAS] Primera alerta: id={alertas_result[0].id}, vista={alertas_result[0]._mapping.get('vista', 'FIELD_MISSING')}")
 
         elif user_info.rol == 'adulto_mayor':
             # Obtener el adulto_mayor_id del usuario
@@ -2955,13 +2993,15 @@ def get_alertas(
 
             adulto_id = adulto_result[0]
             query_alertas = text("""
-                SELECT a.*, am.nombre_completo as nombre_adulto_mayor
+                SELECT a.*, am.nombre_completo as nombre_adulto_mayor,
+                       CASE WHEN av.id IS NOT NULL THEN TRUE ELSE FALSE END as vista
                 FROM alertas a
                 JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                LEFT JOIN alertas_vistas av ON a.id = av.alerta_id AND av.usuario_id = :usuario_id
                 WHERE a.adulto_mayor_id = :adulto_mayor_id
                 ORDER BY a.timestamp_alerta DESC
             """)
-            alertas_result = db_conn.execute(query_alertas, {"adulto_mayor_id": adulto_id}).fetchall()
+            alertas_result = db_conn.execute(query_alertas, {"adulto_mayor_id": adulto_id, "usuario_id": user_info.id}).fetchall()
 
         else:
             raise HTTPException(
@@ -3138,6 +3178,129 @@ def actualizar_alerta(
         return AlertaInfo(
             **result._mapping,
             nombre_adulto_mayor=nombre_adulto_mayor
+        )
+
+
+# --- ENDPOINTS DE ALERTAS VISTAS ---
+
+@app.post("/alertas-vistas", response_model=AlertaVistaInfo, status_code=status.HTTP_201_CREATED)
+def marcar_alerta_vista(
+    vista_data: AlertaVistaCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Marca una alerta o recordatorio como visto por el usuario actual.
+    Esto permite que cada cuidador tenga su propia lista de "no leídas".
+    """
+    print(f"[ALERTAS-VISTAS] Recibida solicitud: alerta_id={vista_data.alerta_id}, recordatorio_id={vista_data.recordatorio_id}")
+    user_info = read_users_me(current_user)
+    print(f"[ALERTAS-VISTAS] Usuario: id={user_info.id}, rol={user_info.rol}")
+
+    # Verificar que se proporciona alerta_id O recordatorio_id, pero no ambos
+    if (vista_data.alerta_id is None and vista_data.recordatorio_id is None) or \
+       (vista_data.alerta_id is not None and vista_data.recordatorio_id is not None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe proporcionar alerta_id O recordatorio_id, pero no ambos"
+        )
+
+    try:
+        with engine.connect() as db_conn:
+            with db_conn.begin() as trans:
+                # Verificar que el usuario tiene permiso para ver esta alerta/recordatorio
+                if vista_data.alerta_id:
+                    # Verificar acceso a la alerta
+                    if user_info.rol == 'cuidador':
+                        query_check = text("""
+                            SELECT a.id FROM alertas a
+                            JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                            JOIN cuidadores_adultos_mayores cam ON am.id = cam.adulto_mayor_id
+                            WHERE a.id = :alerta_id AND cam.usuario_id = :usuario_id
+                        """)
+                    elif user_info.rol == 'adulto_mayor':
+                        query_check = text("""
+                            SELECT a.id FROM alertas a
+                            JOIN adultos_mayores am ON a.adulto_mayor_id = am.id
+                            WHERE a.id = :alerta_id AND am.usuario_id = :usuario_id
+                        """)
+                    else:  # administrador
+                        query_check = text("SELECT id FROM alertas WHERE id = :alerta_id")
+
+                    result_check = db_conn.execute(query_check, {
+                        "alerta_id": vista_data.alerta_id,
+                        "usuario_id": user_info.id
+                    }).fetchone()
+
+                    if not result_check:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="No tienes permiso para marcar esta alerta como vista"
+                        )
+
+                elif vista_data.recordatorio_id:
+                    # Verificar acceso al recordatorio
+                    if user_info.rol == 'cuidador':
+                        query_check = text("""
+                            SELECT r.id FROM recordatorios r
+                            JOIN adultos_mayores am ON r.adulto_mayor_id = am.id
+                            JOIN cuidadores_adultos_mayores cam ON am.id = cam.adulto_mayor_id
+                            WHERE r.id = :recordatorio_id AND cam.usuario_id = :usuario_id
+                        """)
+                    elif user_info.rol == 'adulto_mayor':
+                        query_check = text("""
+                            SELECT r.id FROM recordatorios r
+                            JOIN adultos_mayores am ON r.adulto_mayor_id = am.id
+                            WHERE r.id = :recordatorio_id AND am.usuario_id = :usuario_id
+                        """)
+                    else:  # administrador
+                        query_check = text("SELECT id FROM recordatorios WHERE id = :recordatorio_id")
+
+                    result_check = db_conn.execute(query_check, {
+                        "recordatorio_id": vista_data.recordatorio_id,
+                        "usuario_id": user_info.id
+                    }).fetchone()
+
+                    if not result_check:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="No tienes permiso para marcar este recordatorio como visto"
+                        )
+
+                # Insertar o actualizar en alertas_vistas (usar ON CONFLICT para evitar duplicados)
+                if vista_data.alerta_id:
+                    query = text("""
+                        INSERT INTO alertas_vistas (usuario_id, alerta_id, fecha_vista)
+                        VALUES (:usuario_id, :alerta_id, NOW())
+                        ON CONFLICT (usuario_id, alerta_id) DO UPDATE SET fecha_vista = NOW()
+                        RETURNING id, usuario_id, alerta_id, recordatorio_id, fecha_vista
+                    """)
+                else:
+                    query = text("""
+                        INSERT INTO alertas_vistas (usuario_id, recordatorio_id, fecha_vista)
+                        VALUES (:usuario_id, :recordatorio_id, NOW())
+                        ON CONFLICT (usuario_id, recordatorio_id) DO UPDATE SET fecha_vista = NOW()
+                        RETURNING id, usuario_id, alerta_id, recordatorio_id, fecha_vista
+                    """)
+
+                result = db_conn.execute(query, {
+                    "usuario_id": user_info.id,
+                    "alerta_id": vista_data.alerta_id,
+                    "recordatorio_id": vista_data.recordatorio_id
+                }).fetchone()
+
+                trans.commit()
+
+                print(f"[ALERTAS-VISTAS] Guardado exitosamente: id={result[0]}, usuario_id={result[1]}")
+
+                return AlertaVistaInfo(**result._mapping)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error al marcar alerta/recordatorio como vista: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al marcar como vista: {str(e)}"
         )
 
 
@@ -3332,6 +3495,64 @@ def verificar_cooldown_extendido(
                 "cooldown_activo": False,
                 "puede_crear_alerta": True
             }
+
+
+@app.post("/internal/setup-alertas-vistas-table")
+async def setup_alertas_vistas_table(
+    is_authorized: bool = Depends(verify_internal_token)
+):
+    """
+    Endpoint interno para crear la tabla alertas_vistas si no existe.
+    Protegido por token interno.
+    """
+    try:
+        with engine.connect() as db_conn:
+            # Crear la tabla si no existe
+            create_table_query = text("""
+                CREATE TABLE IF NOT EXISTS alertas_vistas (
+                    id SERIAL PRIMARY KEY,
+                    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                    alerta_id INTEGER REFERENCES alertas(id) ON DELETE CASCADE,
+                    recordatorio_id INTEGER REFERENCES recordatorios(id) ON DELETE CASCADE,
+                    fecha_vista TIMESTAMP DEFAULT NOW(),
+                    CONSTRAINT check_alerta_o_recordatorio CHECK (
+                        (alerta_id IS NOT NULL AND recordatorio_id IS NULL) OR
+                        (alerta_id IS NULL AND recordatorio_id IS NOT NULL)
+                    ),
+                    UNIQUE(usuario_id, alerta_id),
+                    UNIQUE(usuario_id, recordatorio_id)
+                );
+            """)
+
+            db_conn.execute(create_table_query)
+            db_conn.commit()
+            print("✅ Tabla alertas_vistas verificada/creada")
+
+            # Crear índices si no existen
+            indices = [
+                "CREATE INDEX IF NOT EXISTS idx_alertas_vistas_usuario ON alertas_vistas(usuario_id);",
+                "CREATE INDEX IF NOT EXISTS idx_alertas_vistas_alerta ON alertas_vistas(alerta_id);",
+                "CREATE INDEX IF NOT EXISTS idx_alertas_vistas_recordatorio ON alertas_vistas(recordatorio_id);",
+                "CREATE INDEX IF NOT EXISTS idx_alertas_vistas_fecha ON alertas_vistas(fecha_vista);"
+            ]
+
+            for index_query in indices:
+                db_conn.execute(text(index_query))
+                db_conn.commit()
+
+            print("✅ Índices verificados/creados")
+
+            return {
+                "status": "success",
+                "message": "Tabla alertas_vistas y sus índices han sido creados/verificados correctamente"
+            }
+
+    except Exception as e:
+        print(f"❌ Error al crear tabla alertas_vistas: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear tabla: {str(e)}"
+        )
 
 
 # --- FIN DE ENDPOINTS ---

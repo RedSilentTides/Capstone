@@ -4,14 +4,25 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart, Camera, AlertCircle, BarChart3, Clock, TrendingUp } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle, Info, X, Bell, Lightbulb, Heart, Camera, AlertCircle, BarChart3, Clock, TrendingUp, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useAuth } from '../../../contexts/AuthContext';
 import CustomHeader from '../../../components/CustomHeader';
 import { VictoryBar, VictoryChart, VictoryAxis, VictoryTheme } from 'victory';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 
 dayjs.locale('es');
+
+// Configurar calendario en español
+LocaleConfig.locales['es'] = {
+  monthNames: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'],
+  monthNamesShort: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+  dayNames: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
+  dayNamesShort: ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'],
+  today: 'Hoy'
+};
+LocaleConfig.defaultLocale = 'es';
 
 // URL de tu API backend
 const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
@@ -46,6 +57,7 @@ interface EventoCaida {
   detalles_adicionales?: any | null;
   nombre_dispositivo?: string | null;
   nombre_adulto_mayor?: string | null;
+  vista?: boolean | null;
 }
 
 interface AlertaAyuda {
@@ -56,6 +68,7 @@ interface AlertaAyuda {
   confirmado_por_cuidador?: boolean | null;
   notas?: string | null;
   nombre_adulto_mayor?: string | null;
+  vista?: boolean | null;
 }
 
 interface Recordatorio {
@@ -70,12 +83,25 @@ interface Recordatorio {
   dias_semana?: number[] | null;
   fecha_creacion: string;
   nombre_adulto_mayor?: string | null;
+  vista?: boolean | null;
 }
 
 interface RecordatoriosPorAdultoMayor {
   adulto_mayor_id: number;
   nombre_adulto_mayor: string;
   recordatorios: Recordatorio[];
+}
+
+interface CaidasPorAdultoMayor {
+  adulto_mayor_id: number;
+  nombre_adulto_mayor: string;
+  caidas: EventoCaida[];
+}
+
+interface AyudasPorAdultoMayor {
+  adulto_mayor_id: number;
+  nombre_adulto_mayor: string;
+  ayudas: AlertaAyuda[];
 }
 
 // Configuración visual para cada tipo de alerta
@@ -88,8 +114,19 @@ const alertConfig: Record<AlertType, { color: string; bgColor: string }> = {
 };
 
 // Componente Dashboard de Estadísticas de Caídas
-function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
+function DashboardCaidas({
+  eventos,
+  recordatorios,
+  onSelectRecordatorio
+}: {
+  eventos: EventoCaida[];
+  recordatorios: RecordatoriosPorAdultoMayor[];
+  onSelectRecordatorio: (recordatorio: any) => void;
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<'7days' | 'calendar'>('7days'); // Selector de vista
+  const [selectedMonth, setSelectedMonth] = useState(dayjs().format('YYYY-MM')); // Mes seleccionado para calendario
+  const [selectedDay, setSelectedDay] = useState<string | null>(null); // Día seleccionado en calendario
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = Math.min(screenWidth - 48, 400);
 
@@ -115,6 +152,71 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
     return ultimos7Dias;
   };
 
+  // Obtener días con caídas y recordatorios para el calendario
+  const getMarkedDates = () => {
+    const marked: any = {};
+
+    // Agregar caídas
+    eventos.forEach(evento => {
+      const fecha = dayjs(evento.timestamp_alerta).format('YYYY-MM-DD');
+      if (!marked[fecha]) {
+        marked[fecha] = {
+          selected: false,
+          caidaCount: 0,
+          recordatorios: [],
+          dots: []
+        };
+      }
+      marked[fecha].caidaCount++;
+    });
+
+    // Agregar recordatorios
+    recordatorios.forEach(grupo => {
+      grupo.recordatorios.forEach(rec => {
+        const fecha = dayjs(rec.fecha_hora_programada).format('YYYY-MM-DD');
+        if (!marked[fecha]) {
+          marked[fecha] = {
+            selected: false,
+            caidaCount: 0,
+            recordatorios: [],
+            dots: []
+          };
+        }
+        marked[fecha].recordatorios.push({
+          ...rec,
+          nombre_adulto_mayor: grupo.nombre_adulto_mayor
+        });
+      });
+    });
+
+    // Configurar colores y dots
+    Object.keys(marked).forEach(fecha => {
+      const data = marked[fecha];
+      const caidaCount = data.caidaCount;
+      const tieneRecordatorios = data.recordatorios.length > 0;
+
+      // Color de fondo según caídas
+      if (caidaCount >= 3) {
+        marked[fecha].selectedColor = '#dc2626'; // Rojo oscuro para 3+ caídas
+        marked[fecha].selected = true;
+      } else if (caidaCount === 2) {
+        marked[fecha].selectedColor = '#fb923c'; // Naranja para 2 caídas
+        marked[fecha].selected = true;
+      } else if (caidaCount === 1) {
+        marked[fecha].selectedColor = '#fca5a5'; // Rosa claro para 1 caída
+        marked[fecha].selected = true;
+      }
+
+      // Agregar dots para recordatorios (azul para futuros y pasados)
+      if (tieneRecordatorios) {
+        marked[fecha].dots = [{ color: '#3b82f6' }];
+        marked[fecha].marked = true;
+      }
+    });
+
+    return marked;
+  };
+
   // Agregar datos por hora del día (todas las 24 horas)
   const getCaidasPorHora = () => {
     const horas = Array.from({ length: 24 }, (_, i) => ({
@@ -134,6 +236,7 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
 
   const caidasPorDia = getCaidasPorDia();
   const caidasPorHora = getCaidasPorHora();
+  const markedDates = getMarkedDates();
   const totalCaidas = eventos.length;
   const promedioPorDia = (totalCaidas / 7).toFixed(1);
   const horaPico = caidasPorHora.length > 0
@@ -174,81 +277,234 @@ function DashboardCaidas({ eventos }: { eventos: EventoCaida[] }) {
             </View>
           </View>
 
-          {/* Gráfico de caídas por día */}
+          {/* Selector de vista */}
           {totalCaidas > 0 && (
             <>
-              <Text style={styles.chartTitle}>Caídas por Día (Últimos 7 días)</Text>
-              <View style={styles.chartContainer}>
-                <VictoryChart
-                  width={chartWidth}
-                  height={200}
-                  theme={VictoryTheme.material}
-                  padding={{ top: 20, bottom: 50, left: 50, right: 20 }}
-                  domainPadding={{ x: 20 }}
+              <View style={styles.viewSelectorContainer}>
+                <Pressable
+                  style={[styles.viewButton, viewMode === '7days' && styles.viewButtonActive]}
+                  onPress={() => setViewMode('7days')}
                 >
-                  <VictoryAxis
-                    tickFormat={(t) => t}
-                    style={{
-                      tickLabels: { fontSize: 10, angle: -45, textAnchor: 'end' }
-                    }}
-                  />
-                  <VictoryAxis
-                    dependentAxis
-                    tickFormat={(t) => Math.round(t)}
-                    style={{
-                      tickLabels: { fontSize: 10 }
-                    }}
-                  />
-                  <VictoryBar
-                    data={caidasPorDia}
-                    x="label"
-                    y="count"
-                    style={{
-                      data: { fill: '#ef4444' }
-                    }}
-                    barWidth={20}
-                  />
-                </VictoryChart>
+                  <BarChart3 size={18} color={viewMode === '7days' ? '#7c3aed' : '#6b7280'} />
+                  <Text style={[styles.viewButtonText, viewMode === '7days' && styles.viewButtonTextActive]}>
+                    Últimos 7 días
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.viewButton, viewMode === 'calendar' && styles.viewButtonActive]}
+                  onPress={() => setViewMode('calendar')}
+                >
+                  <CalendarIcon size={18} color={viewMode === 'calendar' ? '#7c3aed' : '#6b7280'} />
+                  <Text style={[styles.viewButtonText, viewMode === 'calendar' && styles.viewButtonTextActive]}>
+                    Calendario
+                  </Text>
+                </Pressable>
               </View>
 
-              {/* Gráfico de distribución por hora (barras horizontales para mejor visualización) */}
-              <Text style={styles.chartTitle}>Distribución por Hora del Día</Text>
+              {/* Vista de gráfico de 7 días */}
+              {viewMode === '7days' ? (
+                <>
+                  <Text style={styles.chartTitle}>Caídas por Día</Text>
                   <View style={styles.chartContainer}>
                     <VictoryChart
-                      horizontal
                       width={chartWidth}
-                      height={600}
+                      height={200}
                       theme={VictoryTheme.material}
-                      padding={{ top: 20, bottom: 30, left: 50, right: 40 }}
-                      domainPadding={{ y: 12 }}
+                      padding={{ top: 20, bottom: 50, left: 50, right: 20 }}
+                      domainPadding={{ x: 20 }}
                     >
                       <VictoryAxis
+                        tickFormat={(t) => t}
                         style={{
-                          axis: { stroke: '#374151', strokeWidth: 1 },
-                          grid: { stroke: '#d1d5db', strokeWidth: 0.8 },
-                          tickLabels: { fontSize: 9, padding: 5 }
+                          tickLabels: { fontSize: 10, angle: -45, textAnchor: 'end' }
                         }}
                       />
                       <VictoryAxis
                         dependentAxis
                         tickFormat={(t) => Math.round(t)}
                         style={{
-                          axis: { stroke: '#374151', strokeWidth: 1 },
-                          grid: { stroke: '#d1d5db', strokeWidth: 0.8 },
-                          tickLabels: { fontSize: 9, padding: 5 }
+                          tickLabels: { fontSize: 10 }
                         }}
                       />
                       <VictoryBar
-                        data={caidasPorHora}
+                        data={caidasPorDia}
                         x="label"
                         y="count"
                         style={{
-                          data: { fill: '#7c3aed' }
+                          data: { fill: '#ef4444' }
                         }}
-                        barWidth={10}
+                        barWidth={20}
                       />
                     </VictoryChart>
                   </View>
+                </>
+              ) : (
+                <>
+                  {/* Vista de calendario */}
+                  <View style={styles.calendarHeader}>
+                    <Pressable
+                      style={styles.monthNavButton}
+                      onPress={() => {
+                        const newMonth = dayjs(selectedMonth).subtract(1, 'month').format('YYYY-MM');
+                        setSelectedMonth(newMonth);
+                      }}
+                    >
+                      <ChevronLeft size={24} color="#7c3aed" />
+                    </Pressable>
+                    <Text style={styles.calendarMonthTitle}>
+                      {dayjs(selectedMonth).format('MMMM YYYY')}
+                    </Text>
+                    <Pressable
+                      style={styles.monthNavButton}
+                      onPress={() => {
+                        const newMonth = dayjs(selectedMonth).add(1, 'month').format('YYYY-MM');
+                        setSelectedMonth(newMonth);
+                      }}
+                    >
+                      <ChevronRight size={24} color="#7c3aed" />
+                    </Pressable>
+                  </View>
+
+                  <Calendar
+                    key={selectedMonth}
+                    current={selectedMonth}
+                    markedDates={markedDates}
+                    onMonthChange={(month) => setSelectedMonth(month.dateString.substring(0, 7))}
+                    onDayPress={(day) => {
+                      const dayData = markedDates[day.dateString];
+                      if (dayData && dayData.recordatorios && dayData.recordatorios.length > 0) {
+                        setSelectedDay(day.dateString);
+                      } else {
+                        setSelectedDay(null);
+                      }
+                    }}
+                    markingType={'multi-dot'}
+                    hideArrows={true}
+                    hideExtraDays={true}
+                    firstDay={1}
+                    theme={{
+                      backgroundColor: '#ffffff',
+                      calendarBackground: '#ffffff',
+                      textSectionTitleColor: '#6b7280',
+                      selectedDayBackgroundColor: '#7c3aed',
+                      selectedDayTextColor: '#ffffff',
+                      todayTextColor: '#7c3aed',
+                      dayTextColor: '#1f2937',
+                      textDisabledColor: '#d1d5db',
+                      monthTextColor: 'transparent',
+                      textMonthFontWeight: '600',
+                      textDayFontSize: 14,
+                      textMonthFontSize: 0,
+                      textDayHeaderFontSize: 12,
+                    }}
+                    style={styles.calendar}
+                  />
+
+                  {/* Leyenda de colores */}
+                  <View style={styles.legendContainer}>
+                    <Text style={styles.legendTitle}>Leyenda:</Text>
+                    <View style={styles.legendRow}>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, { backgroundColor: '#fca5a5' }]} />
+                        <Text style={styles.legendLabel}>1 caída</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, { backgroundColor: '#fb923c' }]} />
+                        <Text style={styles.legendLabel}>2 caídas</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, { backgroundColor: '#dc2626' }]} />
+                        <Text style={styles.legendLabel}>3+ caídas</Text>
+                      </View>
+                    </View>
+                    <View style={styles.legendRow}>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
+                        <Text style={styles.legendLabel}>Recordatorio</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Recordatorios del día seleccionado */}
+                  {selectedDay && markedDates[selectedDay]?.recordatorios?.length > 0 && (
+                    <View style={styles.selectedDayContainer}>
+                      <Text style={styles.selectedDayTitle}>
+                        Recordatorios para {dayjs(selectedDay).format('D [de] MMMM')}
+                      </Text>
+                      {markedDates[selectedDay].recordatorios.map((rec: any, index: number) => {
+                        const tipoRecordatorioIcons: Record<string, string> = {
+                          medicamento: '💊',
+                          cita_medica: '🏥',
+                          ejercicio: '🏃',
+                          hidratacion: '💧',
+                          comida: '🍽️',
+                          consejo_salud: '💜',
+                          otro: '📌',
+                        };
+                        const icon = tipoRecordatorioIcons[rec.tipo_recordatorio || 'otro'] || '📌';
+                        const hora = dayjs(rec.fecha_hora_programada).format('HH:mm');
+
+                        return (
+                          <Pressable
+                            key={`${rec.id}-${index}`}
+                            style={styles.selectedDayRecordatorio}
+                            onPress={() => onSelectRecordatorio(rec)}
+                          >
+                            <Text style={styles.selectedDayIcon}>{icon}</Text>
+                            <View style={styles.selectedDayContent}>
+                              <Text style={styles.selectedDayRecordatorioTitle}>{rec.titulo}</Text>
+                              <View style={styles.selectedDayMeta}>
+                                <Heart size={14} color="#3b82f6" />
+                                <Text style={styles.selectedDayPersona}>{rec.nombre_adulto_mayor}</Text>
+                                <Text style={styles.selectedDayHora}>• {hora}</Text>
+                              </View>
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </>
+              )}
+
+              {/* Gráfico de distribución por hora (barras horizontales para mejor visualización) */}
+              <Text style={styles.chartTitle}>Distribución por Hora del Día</Text>
+              <View style={styles.chartContainer}>
+                <VictoryChart
+                  horizontal
+                  width={chartWidth}
+                  height={600}
+                  theme={VictoryTheme.material}
+                  padding={{ top: 20, bottom: 30, left: 50, right: 40 }}
+                  domainPadding={{ y: 12 }}
+                >
+                  <VictoryAxis
+                    style={{
+                      axis: { stroke: '#374151', strokeWidth: 1 },
+                      grid: { stroke: '#d1d5db', strokeWidth: 0.8 },
+                      tickLabels: { fontSize: 9, padding: 5 }
+                    }}
+                  />
+                  <VictoryAxis
+                    dependentAxis
+                    tickFormat={(t) => Math.round(t)}
+                    style={{
+                      axis: { stroke: '#374151', strokeWidth: 1 },
+                      grid: { stroke: '#d1d5db', strokeWidth: 0.8 },
+                      tickLabels: { fontSize: 9, padding: 5 }
+                    }}
+                  />
+                  <VictoryBar
+                    data={caidasPorHora}
+                    x="label"
+                    y="count"
+                    style={{
+                      data: { fill: '#7c3aed' }
+                    }}
+                    barWidth={10}
+                  />
+                </VictoryChart>
+              </View>
             </>
           )}
 
@@ -428,7 +684,7 @@ function RecordatoriosAdultoMayorCard({ data, onToggle, isExpanded, recordatorio
   };
 
   // Contar cuántos recordatorios no están leídos
-  const noLeidos = data.recordatorios.filter(rec => !recordatoriosLeidos.has(rec.id)).length;
+  const noLeidos = data.recordatorios.filter(rec => !rec.vista).length;
 
   return (
     <View style={styles.adultoMayorCard}>
@@ -454,6 +710,7 @@ function RecordatoriosAdultoMayorCard({ data, onToggle, isExpanded, recordatorio
             const fecha = new Date(rec.fecha_hora_programada);
             const formattedDate = fecha.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
             const formattedTime = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const noLeido = !rec.vista;
 
             return (
               <Pressable
@@ -468,6 +725,158 @@ function RecordatoriosAdultoMayorCard({ data, onToggle, isExpanded, recordatorio
                     <Text style={styles.recordatorioDescripcion} numberOfLines={2}>{rec.descripcion}</Text>
                   )}
                   <Text style={styles.recordatorioFecha}>{formattedDate} • {formattedTime}</Text>
+                </View>
+                {noLeido && (
+                  <View style={styles.unreadIndicator}>
+                    <Text style={styles.unreadIndicatorText}>!</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Componente de ficha expandible para caídas por adulto mayor
+function CaidasAdultoMayorCard({ data, onToggle, isExpanded, onCaidaPress }: {
+  data: CaidasPorAdultoMayor;
+  onToggle: () => void;
+  isExpanded: boolean;
+  onCaidaPress: (caida: EventoCaida) => void;
+}) {
+  // Contar cuántas caídas no están vistas
+  const noLeidas = data.caidas.filter(caida => !caida.vista).length;
+
+  return (
+    <View style={styles.adultoMayorCard}>
+      <Pressable onPress={onToggle} style={styles.adultoMayorHeader}>
+        <View style={styles.adultoMayorHeaderContent}>
+          <AlertTriangle size={20} color="#ef4444" style={{ marginRight: 8 }} />
+          <Text style={styles.adultoMayorNombre}>{data.nombre_adulto_mayor}</Text>
+          {noLeidas > 0 && (
+            <View style={styles.noLeidoIndicator}>
+              <Text style={styles.noLeidoText}>{noLeidas}</Text>
+            </View>
+          )}
+        </View>
+        <View style={[styles.recordatoriosBadge, { backgroundColor: '#fee2e2' }]}>
+          <Text style={[styles.recordatoriosBadgeText, { color: '#ef4444' }]}>{data.caidas.length}</Text>
+        </View>
+      </Pressable>
+
+      {isExpanded && (
+        <View style={styles.recordatoriosList}>
+          {data.caidas.map((caida) => {
+            const fecha = new Date(caida.timestamp_alerta);
+            const formattedDate = fecha.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+            const formattedTime = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const hasSnapshot = caida.detalles_adicionales?.snapshot_url ? true : false;
+            const confirmada = caida.confirmado_por_cuidador;
+            const noLeido = !caida.vista;
+
+            return (
+              <Pressable
+                key={caida.id}
+                style={styles.recordatorioItem}
+                onPress={() => onCaidaPress(caida)}
+              >
+                {hasSnapshot ? (
+                  <Camera size={20} color="#7c3aed" style={{ marginRight: 12 }} />
+                ) : (
+                  <AlertTriangle size={20} color="#ef4444" style={{ marginRight: 12 }} />
+                )}
+                <View style={styles.recordatorioContent}>
+                  <Text style={styles.recordatorioTitulo}>Alerta de Caída</Text>
+                  {caida.notas && (
+                    <Text style={styles.recordatorioDescripcion} numberOfLines={2}>{caida.notas}</Text>
+                  )}
+                  <Text style={styles.recordatorioFecha}>{formattedDate} • {formattedTime}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {noLeido && (
+                    <View style={[styles.unreadIndicator, { marginRight: 4 }]}>
+                      <Text style={styles.unreadIndicatorText}>!</Text>
+                    </View>
+                  )}
+                  {confirmada && (
+                    <View style={[styles.statusBadge, { backgroundColor: '#d1fae5', borderRadius: 12 }]}>
+                      <Text style={[styles.statusBadgeText, { color: '#065f46' }]}>En camino</Text>
+                    </View>
+                  )}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Componente de ficha expandible para ayudas por adulto mayor
+function AyudasAdultoMayorCard({ data, onToggle, isExpanded, onAyudaPress }: {
+  data: AyudasPorAdultoMayor;
+  onToggle: () => void;
+  isExpanded: boolean;
+  onAyudaPress: (ayuda: AlertaAyuda) => void;
+}) {
+  // Contar cuántas ayudas no están vistas
+  const noLeidas = data.ayudas.filter(ayuda => !ayuda.vista).length;
+
+  return (
+    <View style={styles.adultoMayorCard}>
+      <Pressable onPress={onToggle} style={styles.adultoMayorHeader}>
+        <View style={styles.adultoMayorHeaderContent}>
+          <Bell size={20} color="#f97316" style={{ marginRight: 8 }} />
+          <Text style={styles.adultoMayorNombre}>{data.nombre_adulto_mayor}</Text>
+          {noLeidas > 0 && (
+            <View style={styles.noLeidoIndicator}>
+              <Text style={styles.noLeidoText}>{noLeidas}</Text>
+            </View>
+          )}
+        </View>
+        <View style={[styles.recordatoriosBadge, { backgroundColor: '#ffedd5' }]}>
+          <Text style={[styles.recordatoriosBadgeText, { color: '#f97316' }]}>{data.ayudas.length}</Text>
+        </View>
+      </Pressable>
+
+      {isExpanded && (
+        <View style={styles.recordatoriosList}>
+          {data.ayudas.map((ayuda) => {
+            const fecha = new Date(ayuda.timestamp_alerta);
+            const formattedDate = fecha.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+            const formattedTime = fecha.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+            const confirmada = ayuda.confirmado_por_cuidador;
+            const noLeido = !ayuda.vista;
+
+            return (
+              <Pressable
+                key={ayuda.id}
+                style={styles.recordatorioItem}
+                onPress={() => onAyudaPress(ayuda)}
+              >
+                <Text style={styles.recordatorioIcon}>🔔</Text>
+                <View style={styles.recordatorioContent}>
+                  <Text style={styles.recordatorioTitulo}>Solicitud de Ayuda</Text>
+                  {ayuda.notas && (
+                    <Text style={styles.recordatorioDescripcion} numberOfLines={2}>{ayuda.notas}</Text>
+                  )}
+                  <Text style={styles.recordatorioFecha}>{formattedDate} • {formattedTime}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {noLeido && (
+                    <View style={[styles.unreadIndicator, { marginRight: 4 }]}>
+                      <Text style={styles.unreadIndicatorText}>!</Text>
+                    </View>
+                  )}
+                  {confirmada && (
+                    <View style={[styles.statusBadge, { backgroundColor: '#d1fae5', borderRadius: 12 }]}>
+                      <Text style={[styles.statusBadgeText, { color: '#065f46' }]}>En camino</Text>
+                    </View>
+                  )}
                 </View>
               </Pressable>
             );
@@ -495,7 +904,11 @@ export default function AlertasScreen() {
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [eventosCaida, setEventosCaida] = useState<EventoCaida[]>([]);
   const [recordatoriosPorAdultoMayor, setRecordatoriosPorAdultoMayor] = useState<RecordatoriosPorAdultoMayor[]>([]);
-  const [expandedAdultos, setExpandedAdultos] = useState<Set<number>>(new Set());
+  const [caidasPorAdultoMayor, setCaidasPorAdultoMayor] = useState<CaidasPorAdultoMayor[]>([]);
+  const [ayudasPorAdultoMayor, setAyudasPorAdultoMayor] = useState<AyudasPorAdultoMayor[]>([]);
+  const [expandedCaidas, setExpandedCaidas] = useState<Set<number>>(new Set());
+  const [expandedAyudas, setExpandedAyudas] = useState<Set<number>>(new Set());
+  const [expandedRecordatorios, setExpandedRecordatorios] = useState<Set<number>>(new Set());
   const [recordatoriosLeidos, setRecordatoriosLeidos] = useState<Set<number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -559,6 +972,24 @@ export default function AlertasScreen() {
     }
   }, [cargarRecordatoriosLeidos, guardarRecordatoriosLeidos]);
 
+  // Función para marcar alerta/recordatorio como visto
+  const marcarComoVisto = useCallback(async (alertaId?: number, recordatorioId?: number) => {
+    if (!user) return;
+
+    try {
+      const token = await user.getIdToken();
+      await axios.post(
+        `${API_URL}/alertas-vistas`,
+        { alerta_id: alertaId, recordatorio_id: recordatorioId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      console.log(`[ALERTAS] Marcado como visto: alerta=${alertaId}, recordatorio=${recordatorioId}`);
+    } catch (error) {
+      console.error('[ALERTAS] Error al marcar como visto:', error);
+      // No mostramos error al usuario, es una operación silenciosa
+    }
+  }, [user]);
+
   const convertirEventosACaidas = (eventos: EventoCaida[]): Alerta[] => {
     return eventos.map(evento => {
       // Verificar si tiene snapshot en detalles_adicionales
@@ -570,7 +1001,7 @@ export default function AlertasScreen() {
         title: '¡Alerta de Caída Detectada!',
         message: `Detectado por ${evento.nombre_dispositivo || 'dispositivo'}`,
         timestamp: new Date(evento.timestamp_alerta),
-        read: evento.confirmado_por_cuidador !== null,
+        read: !!evento.vista,
         adulto_mayor_nombre: evento.nombre_adulto_mayor || undefined,
         hasSnapshot,
         alertaIdNumerico: evento.id,
@@ -585,7 +1016,7 @@ export default function AlertasScreen() {
       title: '¡Solicitud de Ayuda!',
       message: alerta.nombre_adulto_mayor || 'Persona bajo cuidado',
       timestamp: new Date(alerta.timestamp_alerta),
-      read: alerta.confirmado_por_cuidador !== null,
+      read: !!alerta.vista,
       adulto_mayor_nombre: alerta.nombre_adulto_mayor || undefined,
     }));
   };
@@ -657,6 +1088,46 @@ export default function AlertasScreen() {
 
         setRecordatoriosPorAdultoMayor(recordatoriosArray);
         limpiarRecordatoriosAntiguos(recordatoriosData);
+
+        // Agrupar caídas por adulto mayor
+        const caidasAgrupadas: Record<number, CaidasPorAdultoMayor> = {};
+        caidasData.forEach((caida) => {
+            if (!caidasAgrupadas[caida.adulto_mayor_id]) {
+                caidasAgrupadas[caida.adulto_mayor_id] = {
+                    adulto_mayor_id: caida.adulto_mayor_id,
+                    nombre_adulto_mayor: caida.nombre_adulto_mayor || 'Sin nombre',
+                    caidas: [],
+                };
+            }
+            caidasAgrupadas[caida.adulto_mayor_id].caidas.push(caida);
+        });
+
+        const caidasArray = Object.values(caidasAgrupadas).map((grupo) => ({
+            ...grupo,
+            caidas: grupo.caidas.sort((a, b) => new Date(b.timestamp_alerta).getTime() - new Date(a.timestamp_alerta).getTime()),
+        }));
+
+        setCaidasPorAdultoMayor(caidasArray);
+
+        // Agrupar ayudas por adulto mayor
+        const ayudasAgrupadas: Record<number, AyudasPorAdultoMayor> = {};
+        alertasAyudaData.forEach((ayuda) => {
+            if (!ayudasAgrupadas[ayuda.adulto_mayor_id]) {
+                ayudasAgrupadas[ayuda.adulto_mayor_id] = {
+                    adulto_mayor_id: ayuda.adulto_mayor_id,
+                    nombre_adulto_mayor: ayuda.nombre_adulto_mayor || 'Sin nombre',
+                    ayudas: [],
+                };
+            }
+            ayudasAgrupadas[ayuda.adulto_mayor_id].ayudas.push(ayuda);
+        });
+
+        const ayudasArray = Object.values(ayudasAgrupadas).map((grupo) => ({
+            ...grupo,
+            ayudas: grupo.ayudas.sort((a, b) => new Date(b.timestamp_alerta).getTime() - new Date(a.timestamp_alerta).getTime()),
+        }));
+
+        setAyudasPorAdultoMayor(ayudasArray);
 
         const todasAlertas = [...alertasCaidas, ...alertasAyuda].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
         setAlertas(todasAlertas);
@@ -831,7 +1302,7 @@ export default function AlertasScreen() {
       setIsSnapshotModalVisible(false);
       setIsLoadingSnapshot(false);
     }
-  }, [user, showToast]);
+  }, [user, showToast, marcarComoVisto]);
 
   // Función para descartar una alerta
   const handleDismiss = (id: string) => {
@@ -840,8 +1311,32 @@ export default function AlertasScreen() {
   };
 
   // Función para alternar expansión de adulto mayor
-  const toggleAdultoMayor = (adultoMayorId: number) => {
-    setExpandedAdultos((prev) => {
+  const toggleCaida = (adultoMayorId: number) => {
+    setExpandedCaidas((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(adultoMayorId)) {
+        newSet.delete(adultoMayorId);
+      } else {
+        newSet.add(adultoMayorId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleAyuda = (adultoMayorId: number) => {
+    setExpandedAyudas((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(adultoMayorId)) {
+        newSet.delete(adultoMayorId);
+      } else {
+        newSet.add(adultoMayorId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleRecordatorio = (adultoMayorId: number) => {
+    setExpandedRecordatorios((prev) => {
       const newSet = new Set(prev);
       const isExpanding = !newSet.has(adultoMayorId);
 
@@ -877,7 +1372,7 @@ export default function AlertasScreen() {
 
   // Contar recordatorios no leídos
   const recordatoriosNoLeidos = recordatoriosPorAdultoMayor.reduce((count, grupo) => {
-    const noLeidos = grupo.recordatorios.filter(rec => !recordatoriosLeidos.has(rec.id)).length;
+    const noLeidos = grupo.recordatorios.filter(rec => !rec.vista).length;
     return count + noLeidos;
   }, 0);
 
@@ -922,73 +1417,114 @@ export default function AlertasScreen() {
         </View>
       ) : (
         <>
-          {/* Sección de estadísticas */}
-          <View style={styles.statsSection}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>{alertasNoLeidas}</Text>
-              <Text style={styles.statLabel}>No leídas</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={[styles.statNumber, { color: '#f97316' }]}>{totalAlertasAyuda}</Text>
-              <Text style={styles.statLabel}>Ayuda</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={[styles.statNumber, { color: '#ef4444' }]}>{totalCaidas}</Text>
-              <Text style={styles.statLabel}>Caídas</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={[styles.statNumber, { color: '#3b82f6' }]}>{totalRecordatorios}</Text>
-              <Text style={styles.statLabel}>Recordatorios</Text>
-            </View>
-          </View>
-
           <ScrollView
             contentContainerStyle={styles.mainContent}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
           >
-            {/* Dashboard de Estadísticas de Caídas */}
+            {/* Dashboard de Estadísticas de Caídas - Primero en el ScrollView */}
             {eventosCaida.length > 0 && (
-              <DashboardCaidas eventos={eventosCaida} />
+              <DashboardCaidas
+                eventos={eventosCaida}
+                recordatorios={recordatoriosPorAdultoMayor}
+                onSelectRecordatorio={async (rec) => {
+                  setSelectedRecordatorio(rec);
+                  setIsModalVisible(true);
+                  // Marcar recordatorio como visto y refrescar
+                  await marcarComoVisto(undefined, rec.id);
+                  fetchAlertas(false, true);
+                }}
+              />
             )}
 
-            {/* ORDEN NUEVO: 1. Caídas, 2. Ayuda, 3. Recordatorios */}
+            {/* Sección de estadísticas - Después del dashboard */}
+            <View style={styles.statsSection}>
+              <View style={styles.statCard}>
+                <Text style={styles.statNumber}>{alertasNoLeidas}</Text>
+                <Text style={styles.statLabel}>No leídas</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={[styles.statNumber, { color: '#f97316' }]}>{totalAlertasAyuda}</Text>
+                <Text style={styles.statLabel}>Ayuda</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={[styles.statNumber, { color: '#ef4444' }]}>{totalCaidas}</Text>
+                <Text style={styles.statLabel}>Caídas</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={[styles.statNumber, { color: '#3b82f6' }]}>{totalRecordatorios}</Text>
+                <Text style={styles.statLabel}>Recordatorios</Text>
+              </View>
+            </View>
 
-            {/* Sección de Alertas de Caída */}
-            {alertasCaidas.length > 0 && (
+            {/* ORDEN: 1. Caídas por Persona, 2. Ayudas por Persona, 3. Recordatorios por Persona */}
+
+            {/* Sección de Caídas por Persona */}
+            {caidasPorAdultoMayor.length > 0 && userProfile?.rol === 'cuidador' && (
               <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Alertas de Caída</Text>
-                  {totalCaidas > 3 && (
-                    <Text style={styles.sectionSubtitle}>Mostrando últimas 3 de {totalCaidas}</Text>
-                  )}
-                </View>
-                {alertasCaidas.map((alerta) => (
-                  <AlertCard
-                    key={alerta.id}
-                    alert={alerta}
-                    onDismiss={handleDismiss}
-                    onViewSnapshot={handleViewSnapshot}
+                <Text style={styles.sectionTitle}>Alertas de Caída por Persona</Text>
+                {caidasPorAdultoMayor.map((grupo) => (
+                  <CaidasAdultoMayorCard
+                    key={grupo.adulto_mayor_id}
+                    data={grupo}
+                    isExpanded={expandedCaidas.has(grupo.adulto_mayor_id)}
+                    onToggle={() => toggleCaida(grupo.adulto_mayor_id)}
+                    onCaidaPress={async (caida) => {
+                      // Actualizar estado local inmediatamente
+                      setEventosCaida(prev => prev.map(c =>
+                        c.id === caida.id ? { ...c, vista: true } : c
+                      ));
+                      setCaidasPorAdultoMayor(prev => prev.map(grupo => ({
+                        ...grupo,
+                        caidas: grupo.caidas.map(c =>
+                          c.id === caida.id ? { ...c, vista: true } : c
+                        )
+                      })));
+                      setAlertas(prev => prev.map(a =>
+                        a.alertaIdNumerico === caida.id ? { ...a, read: true } : a
+                      ));
+
+                      // Marcar como visto en backend
+                      await marcarComoVisto(caida.id, undefined);
+
+                      const hasSnapshot = caida.detalles_adicionales?.snapshot_url ? true : false;
+                      if (hasSnapshot) {
+                        handleViewSnapshot(caida.id);
+                      } else {
+                        showToast('Caída registrada sin foto', 'info');
+                      }
+                    }}
                   />
                 ))}
               </View>
             )}
 
-            {/* Sección de Solicitudes de Ayuda */}
-            {alertasAyuda.length > 0 && (
+            {/* Sección de Solicitudes de Ayuda por Persona */}
+            {ayudasPorAdultoMayor.length > 0 && userProfile?.rol === 'cuidador' && (
               <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Solicitudes de Ayuda</Text>
-                  {totalAlertasAyuda > 3 && (
-                    <Text style={styles.sectionSubtitle}>Mostrando últimas 3 de {totalAlertasAyuda}</Text>
-                  )}
-                </View>
-                {alertasAyuda.map((alerta) => (
-                  <AlertCard
-                    key={alerta.id}
-                    alert={alerta}
-                    onDismiss={handleDismiss}
+                <Text style={styles.sectionTitle}>Solicitudes de Ayuda por Persona</Text>
+                {ayudasPorAdultoMayor.map((grupo) => (
+                  <AyudasAdultoMayorCard
+                    key={grupo.adulto_mayor_id}
+                    data={grupo}
+                    isExpanded={expandedAyudas.has(grupo.adulto_mayor_id)}
+                    onToggle={() => toggleAyuda(grupo.adulto_mayor_id)}
+                    onAyudaPress={async (ayuda) => {
+                      // Actualizar estado local inmediatamente
+                      setAyudasPorAdultoMayor(prev => prev.map(grupo => ({
+                        ...grupo,
+                        ayudas: grupo.ayudas.map(a =>
+                          a.id === ayuda.id ? { ...a, vista: true } : a
+                        )
+                      })));
+                      setAlertas(prev => prev.map(a =>
+                        a.alertaIdNumerico === ayuda.id ? { ...a, read: true } : a
+                      ));
+
+                      // Marcar como visto en backend
+                      await marcarComoVisto(ayuda.id, undefined);
+                    }}
                   />
                 ))}
               </View>
@@ -1004,12 +1540,15 @@ export default function AlertasScreen() {
                       <RecordatoriosAdultoMayorCard
                         key={grupo.adulto_mayor_id}
                         data={grupo}
-                        isExpanded={expandedAdultos.has(grupo.adulto_mayor_id)}
-                        onToggle={() => toggleAdultoMayor(grupo.adulto_mayor_id)}
+                        isExpanded={expandedRecordatorios.has(grupo.adulto_mayor_id)}
+                        onToggle={() => toggleRecordatorio(grupo.adulto_mayor_id)}
                         recordatoriosLeidos={recordatoriosLeidos}
-                        onRecordatorioPress={(rec) => {
+                        onRecordatorioPress={async (rec) => {
                           setSelectedRecordatorio(rec);
                           setIsModalVisible(true);
+                          // Marcar recordatorio como visto y refrescar
+                          await marcarComoVisto(undefined, rec.id);
+                          fetchAlertas(false, true);
                         }}
                       />
                     ))}
@@ -1037,9 +1576,12 @@ export default function AlertasScreen() {
                           <Pressable
                             key={rec.id}
                             style={styles.recordatorioItemDirect}
-                            onPress={() => {
+                            onPress={async () => {
                               setSelectedRecordatorio(rec);
                               setIsModalVisible(true);
+                              // Marcar recordatorio como visto y refrescar
+                              await marcarComoVisto(undefined, rec.id);
+                              fetchAlertas(false, true);
                             }}
                           >
                             <Text style={styles.recordatorioIconDirect}>{icon}</Text>
@@ -1328,13 +1870,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     padding: 20,
     backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderRadius: 12,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
-    elevation: 2,
+    elevation: 3,
   },
   statCard: {
     alignItems: 'center',
@@ -1821,7 +2363,6 @@ const styles = StyleSheet.create({
   dashboardContainer: {
     backgroundColor: 'white',
     borderRadius: 12,
-    marginHorizontal: 16,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1898,5 +2439,162 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     textAlign: 'center',
+  },
+  // Estilos para selector de vista
+  viewSelectorContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  viewButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  viewButtonActive: {
+    backgroundColor: '#f3e8ff',
+    borderColor: '#7c3aed',
+  },
+  viewButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  viewButtonTextActive: {
+    color: '#7c3aed',
+  },
+  // Estilos para calendario
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  monthNavButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+  },
+  calendarMonthTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+    textTransform: 'capitalize',
+  },
+  calendar: {
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  // Estilos para leyenda
+  legendContainer: {
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  legendTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: 8,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendColor: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+  },
+  legendLabel: {
+    fontSize: 12,
+    color: '#4b5563',
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  // Estilos para día seleccionado
+  selectedDayContainer: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  selectedDayTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 12,
+    textTransform: 'capitalize',
+  },
+  selectedDayRecordatorio: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#f9fafb',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3b82f6',
+  },
+  selectedDayIcon: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  selectedDayContent: {
+    flex: 1,
+  },
+  selectedDayRecordatorioTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  selectedDayMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  selectedDayPersona: {
+    fontSize: 12,
+    color: '#3b82f6',
+    fontWeight: '500',
+  },
+  selectedDayHora: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  unreadIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ef4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unreadIndicatorText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });

@@ -58,6 +58,7 @@ interface Alerta {
     detalles_adicionales?: any;
     fecha_registro: string;
     nombre_adulto_mayor?: string | null;
+    vista?: boolean | null;
 }
 
 const alertConfig: Record<AlertType, { color: string }> = { 
@@ -322,6 +323,24 @@ export default function IndexScreen() {
     []
   );
 
+  // Función para marcar alerta/recordatorio como visto
+  const marcarComoVisto = useCallback(async (alertaId?: number, recordatorioId?: number) => {
+    if (!user) return;
+
+    try {
+      const token = await user.getIdToken();
+      await axios.post(
+        `${API_URL}/alertas-vistas`,
+        { alerta_id: alertaId, recordatorio_id: recordatorioId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      console.log(`✅ Marcado como visto: alerta=${alertaId}, recordatorio=${recordatorioId}`);
+    } catch (error) {
+      console.error('Error al marcar como visto:', error);
+      // No mostramos error al usuario, es una operación silenciosa
+    }
+  }, [user]);
+
   // Handler YA VOY
   const handleYaVoy = useCallback(async (alerta: Alerta) => {
     if (!user) return;
@@ -341,10 +360,13 @@ export default function IndexScreen() {
 
       await sendYaVoyWithFallback(alerta, authHeader);
 
+      // Marcar alerta como vista
+      await marcarComoVisto(id, undefined);
+
       showToast('success', 'Ayuda en camino', `Se informó a ${alerta.nombre_adulto_mayor || 'la persona'}: "Ayuda en camino"`);
 
-      // marcar alerta como confirmada y ajustar contador
-      setAlertas(prev => prev.map(a => (a.id === id ? { ...a, confirmado_por_cuidador: true } : a)));
+      // marcar alerta como vista y ajustar contador
+      setAlertas(prev => prev.map(a => (a.id === id ? { ...a, vista: true, confirmado_por_cuidador: true } : a)));
       setAlertasNoLeidas(prev => Math.max(0, prev - 1));
 
       // ✅ BLOQUEAR BOTÓN POR 3 MINUTOS (180000ms)
@@ -375,7 +397,7 @@ export default function IndexScreen() {
         return copy;
       });
     }
-  }, [user, sendYaVoyWithFallback, bloqueosYaVoy]);
+  }, [user, sendYaVoyWithFallback, bloqueosYaVoy, marcarComoVisto, showToast]);
   
   // Función reutilizable para refrescar datos del dashboard
   const refetchDashboardData = useCallback(async (skipProfile = true) => {
@@ -437,8 +459,8 @@ export default function IndexScreen() {
       );
       setAlertas(sortedAlertas);
 
-      // Contar alertas no leídas (las que no han sido confirmadas por el cuidador)
-      const noLeidas = sortedAlertas.filter(a => a.confirmado_por_cuidador === null || a.confirmado_por_cuidador === false).length;
+      // Contar alertas no leídas (las que el usuario no ha visto)
+      const noLeidas = sortedAlertas.filter(a => !a.vista).length;
       setAlertasNoLeidas(noLeidas);
       console.log(`✅ Alertas actualizadas: ${sortedAlertas.length}, No leídas: ${noLeidas}`);
 
@@ -728,7 +750,7 @@ export default function IndexScreen() {
 
             <Pressable style={[styles.actionButton, styles.greyButton]} onPress={() => router.push('/cuidador/recordatorios')}>
                <CalendarCheck size={16} color="#374151" style={{ marginRight: 8 }} />
-               <Text style={[styles.buttonText, {color: '#374151'}]}>Ver Historial Completo</Text>
+               <Text style={[styles.buttonText, {color: '#374151'}]}>Gestionar Recordatorios</Text>
             </Pressable>
 
             {(() => {
@@ -892,9 +914,12 @@ export default function IndexScreen() {
                     <Pressable
                         key={rec.id}
                         style={styles.simpleCard}
-                        onPress={() => {
+                        onPress={async () => {
                             setSelectedRecordatorio(rec);
                             setIsModalVisible(true);
+                            // Marcar recordatorio como visto y refrescar datos
+                            await marcarComoVisto(undefined, rec.id);
+                            refetchDashboardData(true);
                         }}
                     >
                         <Text style={styles.simpleCardTitle}>{rec.titulo}</Text>
