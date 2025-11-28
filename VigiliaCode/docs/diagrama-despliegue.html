@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagrama de Despliegue - VigilIA</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #5f6368;
+            margin-bottom: 30px;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #5f6368;
+            font-size: 12px;
+        }
+        .instructions {
+            background: #e8f0fe;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Diagrama de Despliegue y Almacenamiento</h1>
+        <p class="subtitle">Sistema VigilIA - Arquitectura MVP</p>
+
+        <div class="instructions">
+            <strong>Para exportar como imagen:</strong> Haz clic derecho en el diagrama > "Guardar imagen como..." o usa la herramienta de recorte de Windows (Win + Shift + S)
+        </div>
+
+        <div class="mermaid">
+flowchart TB
+    subgraph USERS["USUARIOS FINALES"]
+        direction LR
+        APP["📱 App Movil<br/>(React Native/Expo)<br/>Android & iOS"]
+        WEB["🌐 Web App<br/>(React Native Web)<br/>app.mivigilia.cl"]
+    end
+
+    subgraph GCP["☁️ GOOGLE CLOUD PLATFORM (southamerica-west1)"]
+        subgraph FIREBASE["🔥 Firebase Services"]
+            HOSTING["Firebase Hosting<br/>app-vigilia.web.app"]
+            AUTH["Firebase<br/>Authentication"]
+        end
+
+        subgraph CLOUDRUN["⚡ Cloud Run - Serverless"]
+            API["api-backend<br/>(FastAPI)<br/>CRUD + Alertas"]
+            WS["alertas-websocket<br/>Tiempo Real"]
+            EMAIL["api-email<br/>(SendGrid)"]
+            WSP["whatsapp-webhook<br/>(Meta API)"]
+        end
+
+        subgraph DATA["💾 Almacenamiento"]
+            SQL[("Cloud SQL<br/>PostgreSQL 17<br/>vigilia-db-main")]
+            STORAGE[("Cloud Storage<br/>nanopi-videos-input")]
+        end
+
+        SECRETS["🔐 Secret Manager"]
+    end
+
+    subgraph EXTERNAL["🔗 Servicios Externos"]
+        SENDGRID["✉️ SendGrid"]
+        META["💬 Meta WhatsApp"]
+        EXPO["📲 Expo Push"]
+    end
+
+    subgraph EDGE["🏠 ON-PREMISE - Casa Adulto Mayor"]
+        NANOPI["🖥️ NanoPi Neo4<br/>MediaPipe + IA"]
+        CAM["📷 Camara Dahua<br/>RTSP Stream"]
+    end
+
+    APP --> AUTH
+    WEB --> HOSTING
+    HOSTING --> AUTH
+    AUTH --> API
+
+    API --> SQL
+    API --> STORAGE
+    API --> WS
+    API --> EMAIL
+    API --> WSP
+    API --> SECRETS
+
+    EMAIL --> SENDGRID
+    WSP --> META
+    API --> EXPO
+
+    CAM -->|RTSP| NANOPI
+    NANOPI -->|POST /alertas| API
+    NANOPI -->|Upload| STORAGE
+
+    WS -->|WebSocket| APP
+    SENDGRID -.->|Email| USERS
+    META -.->|WhatsApp| USERS
+    EXPO -.->|Push| APP
+        </div>
+
+        <div class="footer">
+            <p>Imagen 7. Diagrama de despliegue, muestra componentes del sistema. Fuente: mivigilia.cl</p>
+            <p>Proyecto VigilIA - Noviembre 2025</p>
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+    </script>
+</body>
+</html>

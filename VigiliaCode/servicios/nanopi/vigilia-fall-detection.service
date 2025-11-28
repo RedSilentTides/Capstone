@@ -1,0 +1,33 @@
+[Unit]
+Description=VigilIA Fall Detection Edge Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vigilia-edge
+EnvironmentFile=/etc/vigilia-edge.env
+Environment="GOOGLE_APPLICATION_CREDENTIALS=/opt/vigilia-edge/credentials/gcp-key.json"
+
+# Ejecutar con el entorno virtual de Python
+ExecStart=/opt/vigilia-edge/venv/bin/python /opt/vigilia-edge/fall_detection_edge.py
+
+# Reiniciar automáticamente si falla
+Restart=always
+RestartSec=10
+
+# Timeout para inicio/parada
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vigilia-edge
+
+# Sin límites de memoria (dejar que el OS gestione con 315Mi disponible)
+# MemoryMax y MemoryHigh removidos para máxima flexibilidad
+
+[Install]
+WantedBy=multi-user.target

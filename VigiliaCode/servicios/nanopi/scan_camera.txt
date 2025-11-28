@@ -1,0 +1,135 @@
+#!/bin/bash
+
+# Configuración
+RTSP_USER="admin"
+RTSP_PASS="Filianore.1"
+RTSP_PORT="554"
+RTSP_PATH="/cam/realmonitor?channel=1&subtype=1"
+ENV_FILE="/etc/camera_ip.env"
+LOG_FILE="/var/log/camera-scanner.log"
+
+# Función de logging
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+}
+
+log "========================================="
+log "Iniciando búsqueda de cámara RTSP"
+log "========================================="
+
+# Detectar la red actual
+NETWORK=$(ip route | grep -oP '(?<=src )[0-9.]+' | head -1)
+if [ -z "$NETWORK" ]; then
+    log "ERROR: No se pudo detectar la red local"
+    exit 1
+fi
+
+# Extraer la red base (ejemplo: 172.20.10.0/24)
+NETWORK_BASE=$(echo $NETWORK | cut -d'.' -f1-3)
+log "Red detectada: ${NETWORK_BASE}.0/24"
+
+# Función para probar conexión RTSP con reintentos
+test_rtsp() {
+    local IP=$1
+    local URL="rtsp://${RTSP_USER}:${RTSP_PASS}@${IP}:${RTSP_PORT}${RTSP_PATH}"
+    local MAX_RETRIES=2
+
+    for attempt in $(seq 1 $MAX_RETRIES); do
+        # Probar con ffprobe (timeout aumentado a 5 segundos)
+        if timeout 5 ffprobe -v quiet -rtsp_transport tcp -i "$URL" 2>/dev/null; then
+            return 0
+        fi
+
+        # Si falla y quedan intentos, esperar un momento
+        if [ $attempt -lt $MAX_RETRIES ]; then
+            sleep 1
+        fi
+    done
+
+    return 1
+}
+
+# Array para almacenar IPs que responden
+FOUND_IPS=()
+
+log "Escaneando rango ${NETWORK_BASE}.1-254..."
+
+# Escanear el rango de IPs (en paralelo para mayor velocidad)
+for i in {1..254}; do
+    IP="${NETWORK_BASE}.${i}"
+
+    # Saltar la IP del propio dispositivo
+    if [ "$IP" == "$NETWORK" ]; then
+        continue
+    fi
+
+    # Probar en background (máximo 10 procesos en paralelo)
+    {
+        # Primero verificar si el puerto está abierto (más rápido)
+        if timeout 2 nc -z -w2 "$IP" "$RTSP_PORT" 2>/dev/null; then
+            log "Puerto RTSP abierto en: $IP - Probando credenciales..."
+
+            # Ahora probar con credenciales RTSP (con reintentos)
+            if test_rtsp "$IP"; then
+                log "✓ ¡CÁMARA ENCONTRADA! IP: $IP"
+                echo "$IP" >> /tmp/found_cameras.tmp
+            else
+                log "✗ Puerto abierto pero credenciales fallaron en: $IP"
+            fi
+        fi
+    } &
+
+    # Limitar procesos en paralelo
+    if [ $((i % 10)) -eq 0 ]; then
+        wait
+    fi
+done
+
+# Esperar a que terminen todos los procesos
+wait
+
+log "Escaneo completado"
+
+# Leer IPs encontradas
+if [ -f /tmp/found_cameras.tmp ]; then
+    mapfile -t FOUND_IPS < /tmp/found_cameras.tmp
+    rm /tmp/found_cameras.tmp
+fi
+
+# Verificar resultados
+if [ ${#FOUND_IPS[@]} -eq 0 ]; then
+    log "✗ No se encontró ninguna cámara en la red"
+    exit 1
+elif [ ${#FOUND_IPS[@]} -eq 1 ]; then
+    CAMERA_IP="${FOUND_IPS[0]}"
+    log "========================================="
+    log "✓ Cámara encontrada en: $CAMERA_IP"
+    log "========================================="
+
+    # Guardar en archivo de entorno
+    echo "CAMERA_IP=${CAMERA_IP}" > "$ENV_FILE"
+    chmod 644 "$ENV_FILE"
+
+    log "IP guardada en: $ENV_FILE"
+    log "URL completa: rtsp://${RTSP_USER}:***@${CAMERA_IP}:${RTSP_PORT}${RTSP_PATH}"
+
+    # Exportar para uso inmediato
+    export CAMERA_IP
+
+    exit 0
+else
+    log "========================================="
+    log "⚠ Se encontraron múltiples cámaras:"
+    for IP in "${FOUND_IPS[@]}"; do
+        log "  - $IP"
+    done
+    log "========================================="
+    log "Seleccionando la primera: ${FOUND_IPS[0]}"
+
+    CAMERA_IP="${FOUND_IPS[0]}"
+    echo "CAMERA_IP=${CAMERA_IP}" > "$ENV_FILE"
+    chmod 644 "$ENV_FILE"
+
+    log "IP guardada en: $ENV_FILE"
+    exit 0
+fi

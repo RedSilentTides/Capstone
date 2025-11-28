@@ -1,0 +1,84 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4285f4', 'primaryTextColor': '#fff', 'primaryBorderColor': '#1a73e8', 'lineColor': '#5f6368', 'secondaryColor': '#34a853', 'tertiaryColor': '#fbbc04'}}}%%
+flowchart TB
+    subgraph USERS["USUARIOS FINALES"]
+        direction LR
+        APP["App Movil<br/>(React Native/Expo)<br/>Android & iOS"]
+        WEB["Web App<br/>(React Native Web)<br/>app.mivigilia.cl"]
+    end
+
+    subgraph GCP["GOOGLE CLOUD PLATFORM (southamerica-west1)"]
+        subgraph FIREBASE["Firebase Services"]
+            HOSTING["Firebase Hosting<br/>app-vigilia.web.app"]
+            AUTH["Firebase<br/>Authentication"]
+        end
+
+        subgraph CLOUDRUN["Cloud Run (Serverless)"]
+            API["api-backend<br/>(FastAPI)<br/>CRUD + Alertas"]
+            WS["alertas-websocket<br/>Tiempo Real"]
+            EMAIL["api-email<br/>(SendGrid)"]
+            WSP["whatsapp-webhook<br/>(Meta API)"]
+        end
+
+        subgraph DATA["Almacenamiento"]
+            SQL[("Cloud SQL<br/>PostgreSQL 17<br/>vigilia-db-main<br/>10 tablas")]
+            STORAGE[("Cloud Storage<br/>nanopi-videos-input<br/>Snapshots")]
+        end
+
+        SECRETS["Secret Manager<br/>Credenciales"]
+    end
+
+    subgraph EXTERNAL["Servicios Externos"]
+        SENDGRID["SendGrid<br/>Emails"]
+        META["Meta<br/>WhatsApp API"]
+        EXPO["Expo Push<br/>Notifications"]
+    end
+
+    subgraph EDGE["ON-PREMISE (Casa Adulto Mayor)"]
+        NANOPI["NanoPi Neo4<br/>MediaPipe<br/>Deteccion IA"]
+        CAM["Camara Dahua<br/>IP Camera<br/>RTSP"]
+    end
+
+    %% Conexiones Usuario
+    APP --> AUTH
+    WEB --> HOSTING
+    HOSTING --> AUTH
+    AUTH --> API
+
+    %% Conexiones Cloud Run
+    API --> SQL
+    API --> STORAGE
+    API --> WS
+    API --> EMAIL
+    API --> WSP
+    API --> SECRETS
+
+    %% Conexiones Externas
+    EMAIL --> SENDGRID
+    WSP --> META
+    API --> EXPO
+
+    %% Conexiones Edge
+    CAM -->|RTSP| NANOPI
+    NANOPI -->|POST /alertas| API
+    NANOPI -->|Upload Snapshot| STORAGE
+
+    %% Notificaciones
+    WS -->|WebSocket| APP
+    SENDGRID -->|Email| USERS
+    META -->|WhatsApp| USERS
+    EXPO -->|Push| APP
+
+    %% Estilos
+    classDef firebase fill:#ffca28,stroke:#f9a825,color:#000
+    classDef cloudrun fill:#4285f4,stroke:#1a73e8,color:#fff
+    classDef storage fill:#34a853,stroke:#1e8e3e,color:#fff
+    classDef external fill:#ea4335,stroke:#c5221f,color:#fff
+    classDef edge fill:#9c27b0,stroke:#7b1fa2,color:#fff
+    classDef user fill:#e3f2fd,stroke:#1976d2,color:#000
+
+    class HOSTING,AUTH firebase
+    class API,WS,EMAIL,WSP cloudrun
+    class SQL,STORAGE,SECRETS storage
+    class SENDGRID,META,EXPO external
+    class NANOPI,CAM edge
+    class APP,WEB user

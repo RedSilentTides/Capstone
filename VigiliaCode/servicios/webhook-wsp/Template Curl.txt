@@ -1,0 +1,26 @@
+curl --location 'https://graph.facebook.com/v22.0/885336931326209/messages' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer EAALbZAU9YUj4BPycX75EZBlxKjlyrtiu6I1gOiFlosnQuKSYrMY50h23vbLjwNwF7BN6iBigSoWauK0ecl8uxMffbkpWWf7c6gDKtUSsQGzKMtFcE2gAMhZBLcSqhPKabFqLp1f7ZBhrCEs2oZBC9G9kp8Pw5tdmQcUGXcR7n8Cb0CjlPzRR3K7GLm8lXYAZDZD' \
+--data '{
+    "messaging_product": "whatsapp",
+    "to": "56937805787",
+    "type": "template",
+    "template": {
+        "name": "alertacaidatest",
+        "language": {
+            "code": "es_CL"
+        },
+        "components": [
+            {
+                "type": "body",
+                "parameters": [
+                    {
+                        "type": "text",
+                        "parameter_name": "nombre",
+                        "text": "Alexander Test"
+                    }
+                ]
+            }
+        ]
+    }
+}'

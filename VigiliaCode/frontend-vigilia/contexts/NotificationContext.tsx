@@ -1,0 +1,526 @@
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import { Platform, DeviceEventEmitter } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  registerForPushNotificationsAsync,
+  addNotificationReceivedListener,
+  addNotificationResponseReceivedListener,
+  scheduleLocalNotification,
+} from '../services/notificationService';
+import { getWebSocketService, resetWebSocketService, WebSocketMessage } from '../services/websocketService';
+import { useAuth } from './AuthContext';
+import { useToast } from './ToastContext';
+import axios from 'axios';
+
+const API_URL = 'https://api-backend-687053793381.southamerica-west1.run.app';
+
+interface NotificationContextType {
+  expoPushToken: string | null;
+  notification: Notifications.Notification | null;
+  error: string | null;
+  newAlertsCount: number;
+  checkForNewAlerts: () => Promise<void>;
+  isWebSocketConnected: boolean;
+  onNewAlert: (callback: () => void) => () => void;
+}
+
+const NotificationContext = createContext<NotificationContextType>({
+  expoPushToken: null,
+  notification: null,
+  error: null,
+  newAlertsCount: 0,
+  checkForNewAlerts: async () => {},
+  isWebSocketConnected: false,
+  onNewAlert: () => () => {},
+});
+
+export const useNotifications = () => useContext(NotificationContext);
+
+export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+  const [notification, setNotification] = useState<Notifications.Notification | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [newAlertsCount, setNewAlertsCount] = useState(0);
+  const [lastAlertId, setLastAlertId] = useState<number | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
+  const { user, isAuthenticated } = useAuth();
+  const { showToast, showPersistentToast } = useToast();
+  const router = useRouter();
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
+  const pollingInterval = useRef<NodeJS.Timeout | null>(null);
+  const lastAlertIdRef = useRef<number | null>(null);
+  const newAlertCallbacks = useRef<Set<() => void>>(new Set());
+
+  // Cargar lastAlertId desde AsyncStorage al montar
+  useEffect(() => {
+    const loadLastAlertId = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('lastAlertId');
+        if (stored) {
+          const id = parseInt(stored, 10);
+          setLastAlertId(id);
+          lastAlertIdRef.current = id;
+          console.log('📱 LastAlertId cargado desde AsyncStorage:', id);
+        }
+      } catch (e) {
+        console.log('Error al cargar lastAlertId:', e);
+      }
+    };
+
+    if (user) {
+      loadLastAlertId();
+    }
+  }, [user]);
+
+  // Limpiar lastAlertId al cerrar sesión
+  useEffect(() => {
+    if (!isAuthenticated) {
+      AsyncStorage.removeItem('lastAlertId');
+      setLastAlertId(null);
+      lastAlertIdRef.current = null;
+      console.log('📱 LastAlertId limpiado por logout');
+    }
+  }, [isAuthenticated]);
+
+  // Obtener el rol del usuario cuando se autentica
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      setUserRole(null);
+      return;
+    }
+
+    const fetchUserRole = async () => {
+      try {
+        const firebaseToken = await user.getIdToken();
+
+        // Usar el mismo endpoint que index.tsx (/usuarios/yo) que funciona para ambos roles
+        const response = await axios.get(`${API_URL}/usuarios/yo`, {
+          headers: { Authorization: `Bearer ${firebaseToken}` },
+        });
+
+        const rol = response.data.rol;
+        setUserRole(rol);
+        console.log('Rol de usuario obtenido:', rol);
+      } catch (err: any) {
+        console.log('Error al obtener rol de usuario:', err.response?.status || err.message);
+      }
+    };
+
+    fetchUserRole();
+  }, [isAuthenticated, user]);
+
+  // Conectar WebSocket para notificaciones en tiempo real (solo web NO móvil)
+  useEffect(() => {
+    // Solo usar WebSocket en web, en móvil usar push notifications
+    if (Platform.OS !== 'web') {
+      console.log('🌐 WebSocket solo disponible en web, en móvil se usa push/polling');
+      return;
+    }
+
+    if (!isAuthenticated || !user) {
+      // Desconectar si el usuario no está autenticado
+      resetWebSocketService();
+      setIsWebSocketConnected(false);
+      return;
+    }
+
+    // Esperar a que se cargue el rol antes de conectar
+    if (!userRole) {
+      console.log('🌐 Esperando carga de userRole antes de conectar WebSocket...');
+      return;
+    }
+
+    // Solo conectar si es cuidador o adulto mayor
+    if (userRole !== 'cuidador' && userRole !== 'adulto_mayor') {
+      console.log('🌐 WebSocket no disponible para rol:', userRole);
+      return;
+    }
+
+    console.log('🌐 Inicializando conexión WebSocket...');
+    const wsService = getWebSocketService();
+
+    // Evitar reconexión si ya está conectado
+    if (wsService.isConnected) {
+      console.log('🔌 WebSocket ya está conectado, reutilizando conexión');
+      setIsWebSocketConnected(true);
+      return;
+    }
+
+    // Conectar WebSocket
+    wsService.connect(user)
+      .then(() => {
+        console.log('✅ WebSocket conectado en NotificationContext');
+        setIsWebSocketConnected(true);
+      })
+      .catch((error) => {
+        console.error('❌ Error al conectar WebSocket:', error);
+        setIsWebSocketConnected(false);
+      });
+
+    // Configurar handler para mensajes
+    const removeMessageHandler = wsService.onMessage(async (message: WebSocketMessage) => {
+      console.log('📨 Mensaje WebSocket en NotificationContext:', message.tipo);
+
+      // Manejar nuevos recordatorios
+      if (message.tipo === 'nuevo_recordatorio' && message.recordatorio) {
+        const recordatorio = message.recordatorio;
+        console.log('📅 Nuevo recordatorio recibido via WebSocket:', recordatorio);
+
+        const titulo = recordatorio.titulo || 'Recordatorio';
+        const nombreAdulto = recordatorio.nombre_adulto_mayor || '';
+        const mensaje = nombreAdulto ? `Recordatorio para ${nombreAdulto}` : 'Tienes un recordatorio pendiente';
+
+        // Diferenciar entre creación y procesamiento según el estado
+        if (recordatorio.estado === 'enviado') {
+          // Recordatorio procesado (llegó la hora) → Toast PERSISTENTE
+          showPersistentToast('info', `📅 ${titulo}`, mensaje);
+        } else {
+          // Recordatorio creado o actualizado → Toast normal (auto-cierra)
+          showToast('info', `📅 ${titulo}`, mensaje);
+        }
+
+        // Disparar evento personalizado para refrescar vistas
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('nueva-alerta', { detail: { tipo: 'recordatorio', recordatorio } }));
+        }
+
+        return; // No continuar con otros procesamientos
+      }
+
+      // Manejar confirmaciones de "YA VOY" para adultos mayores
+      if (message.tipo === 'confirmacion_alerta') {
+        const titulo = message.titulo || '💙 Tu cuidador está en camino';
+        const mensaje = message.mensaje || 'Ayuda en camino';
+
+        console.log(`💙 CONFIRMACIÓN RECIBIDA: ${titulo} - ${mensaje}`);
+
+        // Mostrar toast en todas las plataformas
+        showToast('info', titulo, mensaje);
+
+        // Intentar notificación del navegador
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification(titulo, {
+              body: mensaje,
+              icon: '/icon.png',
+              badge: '/icon.png',
+              tag: `confirmacion-${message.alerta_id}`,
+              requireInteraction: false,
+            });
+          } catch (e) {
+            console.log('No se pudo mostrar notificación del navegador:', e);
+          }
+        }
+
+        // Disparar evento personalizado para que los componentes se actualicen si es necesario
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('confirmacion-alerta', { detail: message }));
+        }
+
+        return; // No continuar con el procesamiento de alertas
+      }
+
+      if (message.tipo === 'nueva_alerta' && message.alerta) {
+        const alerta = message.alerta;
+
+        console.log('🔔 Nueva alerta recibida via WebSocket:', alerta);
+
+        // Actualizar lastAlertId
+        if (alerta.id > (lastAlertIdRef.current || 0)) {
+          setLastAlertId(alerta.id);
+          lastAlertIdRef.current = alerta.id;
+          AsyncStorage.setItem('lastAlertId', alerta.id.toString());
+        }
+
+        // Determinar tipo y mensaje según el tipo de alerta
+        let titulo: string;
+        let mensaje: string;
+        let emoji: string;
+
+        if (alerta.tipo_alerta === 'caida') {
+          titulo = '🚨 Alerta de Caída Detectada';
+          emoji = '⚠️';
+          mensaje = `${alerta.nombre_adulto_mayor || 'Un adulto mayor'} - Posible caída detectada`;
+        } else { // ayuda
+          titulo = '🚨 ¡SOLICITUD DE AYUDA!';
+          emoji = '🆘';
+          mensaje = `${alerta.nombre_adulto_mayor || 'Un adulto mayor'} ha solicitado ayuda`;
+        }
+
+        console.log(`${emoji} ALERTA (${alerta.tipo_alerta}): ${mensaje}`);
+
+        // Mostrar toast en todas las plataformas
+        const tipoToast = alerta.tipo_alerta === 'caida' ? 'error' : 'error'; // Ambas son urgentes
+        showToast(tipoToast, titulo, `${mensaje}\n\nAlerta ID: ${alerta.id}`);
+
+        // Adicionalmente, intentar notificación del navegador si está permitido
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          try {
+            new Notification(titulo, {
+              body: mensaje,
+              icon: '/icon.png',
+              badge: '/icon.png',
+              tag: `alerta-${alerta.id}`,
+              requireInteraction: true,
+            });
+          } catch (e) {
+            console.log('No se pudo mostrar notificación del navegador:', e);
+          }
+        }
+
+        // Actualizar contador de alertas y forzar refresh
+        await checkForNewAlerts();
+
+        // Disparar evento personalizado para que los componentes se actualicen
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('nueva-alerta', { detail: alerta }));
+        }
+      }
+    });
+
+    // Configurar handler para cierre de conexión
+    const removeCloseHandler = wsService.onClose(() => {
+      console.log('🔌 WebSocket desconectado');
+      setIsWebSocketConnected(false);
+    });
+
+    // Cleanup al desmontar - SOLO desconectar si user o isAuthenticated cambian
+    return () => {
+      console.log('🧹 Cleanup de WebSocket - solo removiendo handlers');
+      removeMessageHandler();
+      removeCloseHandler();
+      // NO desconectar aquí - se desconecta solo cuando user/isAuthenticated cambian
+    };
+  }, [isAuthenticated, user, userRole]);
+
+  // Cleanup separado para desconectar cuando el usuario se desautentica
+  useEffect(() => {
+    // Si el usuario se desautentica, desconectar WebSocket
+    if (!isAuthenticated || !user) {
+      resetWebSocketService();
+      setIsWebSocketConnected(false);
+    }
+
+    // Cleanup al cambiar de usuario o logout
+    return () => {
+      if (!isAuthenticated || !user) {
+        console.log('🔌 Desconectando WebSocket por logout/cambio de usuario');
+        resetWebSocketService();
+        setIsWebSocketConnected(false);
+      }
+    };
+  }, [isAuthenticated, user]);
+
+  // Registrar el dispositivo para notificaciones cuando el usuario esté autenticado
+  useEffect(() => {
+    // Solo configurar notificaciones en dispositivos móviles (no en web)
+    if (Platform.OS === 'web') {
+      console.log('Notificaciones push no disponibles en web');
+      return;
+    }
+
+    if (!isAuthenticated || !user) return;
+
+    // Función asíncrona para configurar todo
+    const setupNotifications = async () => {
+      try {
+        // 1. Obtener el token de push notifications
+        const token = await registerForPushNotificationsAsync();
+
+        if (!token) {
+          console.log('No se pudo obtener el push token');
+          return;
+        }
+
+        setExpoPushToken(token);
+        console.log('Push token obtenido:', token);
+
+        // 2. Enviar el token al backend
+        try {
+          const firebaseToken = await user.getIdToken();
+          await axios.post(
+            `${API_URL}/usuarios/push-token`,
+            { push_token: token },
+            { headers: { Authorization: `Bearer ${firebaseToken}` } }
+          );
+          console.log('Push token enviado al backend');
+        } catch (err) {
+          console.error('Error al enviar push token al backend:', err);
+          setError('No se pudo registrar el dispositivo para notificaciones');
+        }
+
+        // 3. Configurar listeners para notificaciones
+        // Listener para notificaciones recibidas (app en foreground)
+        notificationListener.current = addNotificationReceivedListener((notification) => {
+          console.log('📱 Notificación recibida en foreground:', notification);
+          setNotification(notification);
+
+          // Disparar evento personalizado para que las vistas se refresquen
+          const data = notification.request.content.data;
+          const tipo = data?.tipo || 'nueva_alerta';
+
+          console.log('📱 Disparando evento de notificación:', tipo);
+
+          // Para móvil: usar DeviceEventEmitter
+          DeviceEventEmitter.emit('nueva-alerta', {
+            tipo,
+            data,
+            notification
+          });
+
+          // Para web: usar window.dispatchEvent (si está disponible)
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('nueva-alerta', {
+              detail: { tipo, data, notification }
+            }));
+          }
+        });
+
+        // Listener para cuando el usuario toca una notificación
+        responseListener.current = addNotificationResponseReceivedListener((response) => {
+          console.log('📱 Usuario tocó la notificación:', response);
+
+          // Navegar según el tipo de notificación
+          const data = response.notification.request.content.data;
+
+          // Disparar evento antes de navegar
+          console.log('📱 Disparando evento antes de navegar');
+          DeviceEventEmitter.emit('nueva-alerta', {
+            tipo: data?.tipo || 'nueva_alerta',
+            data,
+            notification: response.notification
+          });
+
+          if (data?.tipo === 'alerta') {
+            router.push('/cuidador/alertas' as any);
+          } else if (data?.tipo === 'recordatorio') {
+            router.push('/cuidador/recordatorios' as any);
+          } else if (data?.tipo === 'solicitud') {
+            router.push('/cuidador/solicitudes' as any);
+          }
+        });
+
+      } catch (err) {
+        console.error('Error al configurar notificaciones:', err);
+        setError('No se pudo configurar las notificaciones');
+      }
+    };
+
+    setupNotifications();
+
+    // Cleanup: Remover listeners al desmontar
+    return () => {
+      if (notificationListener.current) {
+        try {
+          Notifications.removeNotificationSubscription(notificationListener.current);
+        } catch (e) {
+          console.log('Error al remover notification listener:', e);
+        }
+      }
+      if (responseListener.current) {
+        try {
+          Notifications.removeNotificationSubscription(responseListener.current);
+        } catch (e) {
+          console.log('Error al remover response listener:', e);
+        }
+      }
+    };
+  }, [isAuthenticated, user, router]);
+
+  // Función para verificar nuevas alertas
+  const checkForNewAlerts = async () => {
+    if (!user || !isAuthenticated || userRole !== 'cuidador') return;
+
+    try {
+      const firebaseToken = await user.getIdToken();
+      const response = await axios.get(`${API_URL}/alertas`, {
+        headers: { Authorization: `Bearer ${firebaseToken}` },
+      });
+
+      const alertas = response.data;
+      if (alertas && alertas.length > 0) {
+        const latestAlert = alertas[0]; // Las alertas vienen ordenadas por fecha desc
+        const newAlertCount = alertas.filter((a: any) => !a.leido).length;
+        setNewAlertsCount(newAlertCount);
+
+        // Usar la referencia en lugar del estado para verificación síncrona
+        const currentLastAlertId = lastAlertIdRef.current;
+
+        // Si hay una nueva alerta (ID diferente al último conocido), mostrar notificación local
+        if (currentLastAlertId !== null && latestAlert.id > currentLastAlertId) {
+          console.log('🔔 Nueva alerta detectada!', latestAlert);
+
+          // Mostrar notificación local
+          await scheduleLocalNotification(
+            '¡Solicitud de Ayuda!',
+            `${latestAlert.nombre_adulto_mayor} ha solicitado ayuda`,
+            { tipo: 'alerta', alertaId: latestAlert.id }
+          );
+        }
+
+        // Actualizar el último ID de alerta conocido y persistir
+        if (latestAlert.id > (currentLastAlertId || 0)) {
+          setLastAlertId(latestAlert.id);
+          lastAlertIdRef.current = latestAlert.id;
+          await AsyncStorage.setItem('lastAlertId', latestAlert.id.toString());
+          console.log('📱 LastAlertId guardado en AsyncStorage:', latestAlert.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error al verificar nuevas alertas:', err);
+    }
+  };
+
+  // Polling para verificar nuevas alertas cada 5 segundos (en móvil, como fallback de push notifications)
+  useEffect(() => {
+    if (!isAuthenticated || !user || userRole !== 'cuidador') return;
+
+    // En móvil (no web), siempre activar polling como fallback
+    // Esto asegura que el index se actualice incluso si las push notifications fallan (ej: emuladores)
+    if (Platform.OS !== 'web' && expoPushToken) {
+      const esDev = expoPushToken.startsWith('DEV-TOKEN-');
+      console.log(`🔄 Activando polling para alertas (${esDev ? 'modo desarrollo' : 'fallback móvil'})`);
+
+      // Verificar inmediatamente
+      checkForNewAlerts();
+
+      // Configurar polling cada 5 segundos
+      pollingInterval.current = setInterval(checkForNewAlerts, 5000);
+    }
+
+    return () => {
+      if (pollingInterval.current) {
+        clearInterval(pollingInterval.current);
+        pollingInterval.current = null;
+      }
+    };
+  }, [isAuthenticated, user, userRole, expoPushToken]);
+
+  // Función para suscribirse a nuevas alertas
+  const onNewAlert = useCallback((callback: () => void) => {
+    newAlertCallbacks.current.add(callback);
+
+    // Retornar función de limpieza
+    return () => {
+      newAlertCallbacks.current.delete(callback);
+    };
+  }, []);
+
+  return (
+    <NotificationContext.Provider value={{
+      expoPushToken,
+      notification,
+      error,
+      newAlertsCount,
+      checkForNewAlerts,
+      isWebSocketConnected,
+      onNewAlert
+    }}>
+      {children}
+    </NotificationContext.Provider>
+  );
+};

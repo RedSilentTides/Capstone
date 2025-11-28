@@ -1,0 +1,9 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+
+# Modelos de datos
+pydantic[email]
+
+# SendGrid para envío de emails
+sendgrid

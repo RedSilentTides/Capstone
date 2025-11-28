@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VigilIA - Monitoreo Inteligente para Adultos Mayores</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #E6F4FE 0%, #f0f9ff 50%, #faf5ff 100%);
+      color: #1f2937;
+      overflow-x: hidden;
+    }
+
+    /* Header con animación */
+    header {
+      background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+      padding: 1rem 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      animation: slideDown 0.5s ease-out;
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translateY(-100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .header-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo {
+      width: 50px;
+      height: 50px;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(0px);
+      }
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+
+    .brand-name {
+      color: white;
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    /* Hero Section */
+    .hero {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 4rem 2rem;
+      text-align: center;
+      animation: fadeIn 1s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hero h1 {
+      font-size: 3rem;
+      color: #1B4965;
+      margin-bottom: 1.5rem;
+      font-weight: 800;
+      line-height: 1.2;
+      background: linear-gradient(135deg, #1B4965 0%, #7c3aed 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: slideUp 0.8s ease-out 0.2s both;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      color: #4b5563;
+      margin-bottom: 2rem;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.8;
+      animation: slideUp 0.8s ease-out 0.4s both;
+    }
+
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+      color: white;
+      padding: 1rem 3rem;
+      font-size: 1.125rem;
+      font-weight: 600;
+      border-radius: 50px;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      box-shadow: 0 10px 25px rgba(124, 58, 237, 0.3);
+      animation: slideUp 0.8s ease-out 0.6s both;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-button::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      transform: translate(-50%, -50%);
+      transition: width 0.6s, height 0.6s;
+    }
+
+    .cta-button:hover::before {
+      width: 300px;
+      height: 300px;
+    }
+
+    .cta-button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 35px rgba(124, 58, 237, 0.4);
+    }
+
+    .cta-button:active {
+      transform: translateY(-1px);
+    }
+
+    /* Features Section */
+    .features {
+      max-width: 1200px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+
+    .feature-card {
+      background: white;
+      padding: 2rem;
+      border-radius: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      transition: all 0.3s ease;
+      animation: fadeInUp 0.6s ease-out both;
+      border: 2px solid transparent;
+    }
+
+    .feature-card:nth-child(1) {
+      animation-delay: 0.1s;
+    }
+
+    .feature-card:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .feature-card:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(40px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .feature-card:hover {
+      transform: translateY(-10px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      border-color: #7c3aed;
+    }
+
+    .feature-icon {
+      width: 60px;
+      height: 60px;
+      background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+      border-radius: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+      font-size: 2rem;
+      transition: transform 0.3s ease;
+    }
+
+    .feature-card:hover .feature-icon {
+      transform: scale(1.1) rotate(5deg);
+    }
+
+    .feature-card h3 {
+      color: #1B4965;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      font-weight: 700;
+    }
+
+    .feature-card p {
+      color: #6b7280;
+      line-height: 1.6;
+      font-size: 1rem;
+    }
+
+    /* Contact Section */
+    .contact-section {
+      max-width: 600px;
+      margin: 4rem auto;
+      padding: 0 2rem;
+      text-align: center;
+    }
+
+    .contact-card {
+      background: white;
+      padding: 2.5rem 2rem;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      border: 2px solid #7c3aed;
+      animation: fadeInUp 0.6s ease-out both;
+      animation-delay: 0.4s;
+    }
+
+    .contact-card h2 {
+      color: #1B4965;
+      font-size: 1.75rem;
+      margin-bottom: 1rem;
+      font-weight: 700;
+    }
+
+    .contact-info {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .phone-icon {
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
+    }
+
+    .phone-number {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #1B4965;
+      letter-spacing: 0.5px;
+    }
+
+    .contact-label {
+      color: #6b7280;
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    /* Footer */
+    footer {
+      background: linear-gradient(135deg, #1B4965 0%, #164054 100%);
+      color: white;
+      text-align: center;
+      padding: 2rem;
+      margin-top: 4rem;
+    }
+
+    footer p {
+      font-size: 0.95rem;
+      opacity: 0.9;
+    }
+
+    .footer-contact {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .footer-contact p {
+      font-size: 1rem;
+      font-weight: 600;
+      opacity: 1;
+    }
+
+    /* Animated background elements */
+    .bg-circle {
+      position: fixed;
+      border-radius: 50%;
+      opacity: 0.1;
+      z-index: -1;
+      animation: floatRandom 20s ease-in-out infinite;
+    }
+
+    @keyframes floatRandom {
+      0%, 100% {
+        transform: translate(0, 0) scale(1);
+      }
+      33% {
+        transform: translate(30px, -30px) scale(1.1);
+      }
+      66% {
+        transform: translate(-20px, 20px) scale(0.9);
+      }
+    }
+
+    .circle-1 {
+      width: 300px;
+      height: 300px;
+      background: #7c3aed;
+      top: 10%;
+      left: 5%;
+      animation-delay: 0s;
+    }
+
+    .circle-2 {
+      width: 200px;
+      height: 200px;
+      background: #1B4965;
+      top: 50%;
+      right: 10%;
+      animation-delay: 5s;
+    }
+
+    .circle-3 {
+      width: 250px;
+      height: 250px;
+      background: #7c3aed;
+      bottom: 10%;
+      left: 15%;
+      animation-delay: 10s;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero h1 {
+        font-size: 2rem;
+      }
+
+      .hero p {
+        font-size: 1rem;
+      }
+
+      .brand-name {
+        font-size: 1.25rem;
+      }
+
+      .logo {
+        width: 40px;
+        height: 40px;
+      }
+
+      .features {
+        grid-template-columns: 1fr;
+      }
+
+      .cta-button {
+        padding: 0.875rem 2rem;
+        font-size: 1rem;
+      }
+
+      .contact-card h2 {
+        font-size: 1.5rem;
+      }
+
+      .phone-number {
+        font-size: 1.25rem;
+      }
+
+      .contact-info {
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated background circles -->
+  <div class="bg-circle circle-1"></div>
+  <div class="bg-circle circle-2"></div>
+  <div class="bg-circle circle-3"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="header-content">
+      <div class="logo-container">
+        <img src="logo.png" alt="VigilIA Logo" class="logo">
+        <span class="brand-name">VigilIA</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <h1>Cuidado Inteligente para tus Seres Queridos</h1>
+    <p>
+      Monitoreo de adultos mayores a través de tecnología de visión artificial,
+      brindando tranquilidad y seguridad las 24 horas del día.
+    </p>
+    <a href="https://app.mivigilia.cl" class="cta-button">Comenzar Ahora</a>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features">
+    <div class="feature-card">
+      <div class="feature-icon">👁️</div>
+      <h3>Monitoreo Continuo</h3>
+      <p>
+        Sistema de vigilancia inteligente que supervisa constantemente el bienestar
+        de tus seres queridos a través de cámaras instaladas en sus hogares.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">🔔</div>
+      <h3>Alertas Instantáneas</h3>
+      <p>
+        Recibe notificaciones inmediatas ante cualquier situación de riesgo,
+        permitiendo una respuesta rápida y efectiva.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">🛡️</div>
+      <h3>Detección de Caídas</h3>
+      <p>
+        Tecnología avanzada de IA que detecta automáticamente caídas y situaciones
+        de emergencia para proteger a tus seres queridos.
+      </p>
+    </div>
+  </section>
+
+  <!-- Contact Section -->
+  <section class="contact-section">
+    <div class="contact-card">
+      <p class="contact-label">Contacto Vigilia</p>
+      <h2>¿Necesitas ayuda?</h2>
+      <div class="contact-info">
+        <div class="phone-icon">📱</div>
+        <a href="tel:+56926243019" class="phone-number" style="text-decoration: none; color: #1B4965;">+56 9 2624 3019</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; 2025 VigilIA - Proyecto de Titulación. Todos los derechos reservados.</p>
+    <p style="margin-top: 0.5rem; font-size: 0.875rem;">Desarrollo académico - Comisión Evaluadora</p>
+
+    <div class="footer-contact">
+      <p>Contacto Vigilia: +56 9 2624 3019</p>
+    </div>
+  </footer>
+</body>
+</html>

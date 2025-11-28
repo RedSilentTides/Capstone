@@ -1,0 +1,19 @@
+# Web Framework con soporte WebSocket
+fastapi
+uvicorn[standard]
+websockets
+
+# Base de datos
+sqlalchemy
+psycopg2-binary
+cloud-sql-python-connector[psycopg2]
+
+# Modelos de datos
+pydantic
+email-validator
+
+# Firebase Authentication
+firebase-admin
+
+# HTTP requests (para comunicación con otros servicios)
+requests

@@ -1,0 +1,30 @@
+{
+  "hosting": [
+    {
+      "//": "1. FMV (la fachada de mivigilia.cl)",
+      "site": "composed-apogee-475623-p6",
+      "public": "despliegue-hosting/public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ]
+    },
+    {
+      "//": "2. APP DE EXPO (app.mivigilia.cl)",
+      "site": "app-vigilia",
+      "public": "frontend-vigilia/dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
+}
