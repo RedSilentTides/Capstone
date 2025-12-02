@@ -75,12 +75,14 @@ function AlertPreviewCard({
   loading = false,
   blocked = false,
   blockedUntil,
+  wasResponded = false,
 }: {
   alert: AlertItem;
   onPressAction?: () => void;
   loading?: boolean;
   blocked?: boolean;
   blockedUntil?: number;
+  wasResponded?: boolean; // true si ya se respondio previamente con "YA VOY"
 }) {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const config = alertConfig[alert.type];
@@ -144,7 +146,12 @@ function AlertPreviewCard({
           <Pressable
             style={[
               styles.goButton,
-              (loading || blocked) && { opacity: 0.7, backgroundColor: '#9ca3af' }
+              // Color del boton: gris si bloqueado/cargando, naranja si ya respondido, rojo si no respondido
+              (loading || blocked)
+                ? { opacity: 0.7, backgroundColor: '#9ca3af' }
+                : wasResponded
+                  ? { backgroundColor: '#f97316' } // Naranja: ya fue respondida antes
+                  : { backgroundColor: '#ef4444' } // Rojo: primera vez / no respondida
             ]}
             onPress={(loading || blocked) ? undefined : onPressAction}
             disabled={loading || blocked}
@@ -157,7 +164,7 @@ function AlertPreviewCard({
                 <Text style={[styles.goButtonText, { fontSize: 9 }]}>{getTimeRemaining()}</Text>
               </View>
             ) : (
-              <Text style={styles.goButtonText}>YA VOY</Text>
+              <Text style={styles.goButtonText}>{wasResponded ? 'YA VOY' : 'YA VOY'}</Text>
             )}
           </Pressable>
         ) : null}
@@ -737,6 +744,7 @@ export default function IndexScreen() {
                             loading={enviandoYaVoy.has(alerta.id)}
                             blocked={isBlocked}
                             blockedUntil={blockedUntil}
+                            wasResponded={alerta.confirmado_por_cuidador === true}
                         />
                       );
                     })}

@@ -1070,15 +1070,18 @@ export default function AlertasScreen() {
   };
 
   const convertirAlertasAyuda = (alertasAyuda: AlertaAyuda[]): Alerta[] => {
-    return alertasAyuda.map(alerta => ({
-      id: `ayuda-${alerta.id}`,
-      type: 'ayuda' as AlertType,
-      title: '¡Solicitud de Ayuda!',
-      message: alerta.nombre_adulto_mayor || 'Persona bajo cuidado',
-      timestamp: new Date(alerta.timestamp_alerta),
-      read: !!alerta.vista,
-      adulto_mayor_nombre: alerta.nombre_adulto_mayor || undefined,
-    }));
+    // Filtrar solo alertas de tipo 'ayuda' (excluir 'caida' ya que se obtienen de /eventos-caida)
+    return alertasAyuda
+      .filter(alerta => alerta.tipo_alerta === 'ayuda')
+      .map(alerta => ({
+        id: `ayuda-${alerta.id}`,
+        type: 'ayuda' as AlertType,
+        title: '¡Solicitud de Ayuda!',
+        message: alerta.nombre_adulto_mayor || 'Persona bajo cuidado',
+        timestamp: new Date(alerta.timestamp_alerta),
+        read: !!alerta.vista,
+        adulto_mayor_nombre: alerta.nombre_adulto_mayor || undefined,
+      }));
   };
 
   // Obtener perfil del usuario
@@ -1184,18 +1187,20 @@ export default function AlertasScreen() {
 
         setCaidasPorAdultoMayor(caidasArray);
 
-        // Agrupar ayudas por adulto mayor
+        // Agrupar ayudas por adulto mayor (solo tipo 'ayuda', excluir 'caida')
         const ayudasAgrupadas: Record<number, AyudasPorAdultoMayor> = {};
-        alertasAyudaData.forEach((ayuda) => {
-            if (!ayudasAgrupadas[ayuda.adulto_mayor_id]) {
-                ayudasAgrupadas[ayuda.adulto_mayor_id] = {
-                    adulto_mayor_id: ayuda.adulto_mayor_id,
-                    nombre_adulto_mayor: ayuda.nombre_adulto_mayor || 'Sin nombre',
-                    ayudas: [],
-                };
-            }
-            ayudasAgrupadas[ayuda.adulto_mayor_id].ayudas.push(ayuda);
-        });
+        alertasAyudaData
+            .filter((ayuda) => ayuda.tipo_alerta === 'ayuda')
+            .forEach((ayuda) => {
+                if (!ayudasAgrupadas[ayuda.adulto_mayor_id]) {
+                    ayudasAgrupadas[ayuda.adulto_mayor_id] = {
+                        adulto_mayor_id: ayuda.adulto_mayor_id,
+                        nombre_adulto_mayor: ayuda.nombre_adulto_mayor || 'Sin nombre',
+                        ayudas: [],
+                    };
+                }
+                ayudasAgrupadas[ayuda.adulto_mayor_id].ayudas.push(ayuda);
+            });
 
         const ayudasArray = Object.values(ayudasAgrupadas).map((grupo) => ({
             ...grupo,
