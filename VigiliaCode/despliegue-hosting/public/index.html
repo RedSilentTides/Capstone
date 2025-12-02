@@ -255,6 +255,89 @@
       font-size: 1rem;
     }
 
+    .tech-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .tech-tag {
+      background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+      color: #6d28d9;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: 1px solid #c4b5fd;
+    }
+
+    /* Tech Stack Section */
+    .tech-section {
+      max-width: 1200px;
+      margin: 2rem auto 4rem;
+      padding: 0 2rem;
+      animation: fadeInUp 0.6s ease-out both;
+      animation-delay: 0.5s;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 2rem;
+      color: #1B4965;
+      margin-bottom: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #1B4965 0%, #7c3aed 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .tech-category {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 15px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      border-left: 4px solid #7c3aed;
+      transition: all 0.3s ease;
+    }
+
+    .tech-category:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    }
+
+    .tech-category h4 {
+      color: #7c3aed;
+      font-size: 1rem;
+      margin-bottom: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .tech-category ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .tech-category li {
+      color: #4b5563;
+      font-size: 0.9rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .tech-category li:last-child {
+      border-bottom: none;
+    }
+
     /* Contact Section */
     .contact-section {
       max-width: 600px;
@@ -427,6 +510,33 @@
         flex-direction: column;
         gap: 0.75rem;
       }
+
+      .section-title {
+        font-size: 1.5rem;
+      }
+
+      .tech-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+
+      .tech-category {
+        padding: 1rem;
+      }
+
+      .tech-category h4 {
+        font-size: 0.875rem;
+      }
+
+      .tech-category li {
+        font-size: 0.8rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .tech-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -459,30 +569,87 @@
   <!-- Features Section -->
   <section class="features">
     <div class="feature-card">
-      <div class="feature-icon">👁️</div>
-      <h3>Monitoreo Continuo</h3>
+      <div class="feature-icon">🖥️</div>
+      <h3>Procesamiento en Borde</h3>
       <p>
-        Sistema de vigilancia inteligente que supervisa constantemente el bienestar
-        de tus seres queridos a través de cámaras instaladas en sus hogares.
+        Dispositivo NanoPi Neo4 con IA integrada procesa video localmente en el hogar.
+        El video nunca sale de la casa, garantizando total privacidad.
+        Funciona incluso con internet lento o intermitente.
       </p>
+      <div class="tech-tags">
+        <span class="tech-tag">NanoPi Neo4</span>
+        <span class="tech-tag">ARM64</span>
+        <span class="tech-tag">Edge Computing</span>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <h3>IA de Deteccion de Caidas</h3>
+      <p>
+        MediaPipe BlazePose detecta 33 puntos del cuerpo en tiempo real.
+        Algoritmo de 3 senales (inclinacion, posicion cadera, forma corporal)
+        confirma caidas en menos de 1 segundo con minimos falsos positivos.
+      </p>
+      <div class="tech-tags">
+        <span class="tech-tag">MediaPipe</span>
+        <span class="tech-tag">BlazePose</span>
+        <span class="tech-tag">Python</span>
+      </div>
     </div>
 
     <div class="feature-card">
       <div class="feature-icon">🔔</div>
-      <h3>Alertas Instantáneas</h3>
+      <h3>Alertas Multicanal</h3>
       <p>
-        Recibe notificaciones inmediatas ante cualquier situación de riesgo,
-        permitiendo una respuesta rápida y efectiva.
+        Notificaciones instantaneas por 3 canales: Push en app movil,
+        WhatsApp directo al cuidador y correo electronico.
+        Responde "Ya voy" para activar modo asistencia.
       </p>
+      <div class="tech-tags">
+        <span class="tech-tag">Push Notifications</span>
+        <span class="tech-tag">WhatsApp API</span>
+        <span class="tech-tag">Email</span>
+      </div>
     </div>
+  </section>
 
-    <div class="feature-card">
-      <div class="feature-icon">🛡️</div>
-      <h3>Detección de Caídas</h3>
-      <p>
-        Tecnología avanzada de IA que detecta automáticamente caídas y situaciones
-        de emergencia para proteger a tus seres queridos.
-      </p>
+  <!-- Tech Stack Section -->
+  <section class="tech-section">
+    <h2 class="section-title">Arquitectura Tecnologica</h2>
+    <div class="tech-grid">
+      <div class="tech-category">
+        <h4>Hardware Edge</h4>
+        <ul>
+          <li>NanoPi Neo4 (ARM Cortex-A72)</li>
+          <li>Camara IP Dahua (RTSP)</li>
+          <li>1GB RAM optimizado</li>
+        </ul>
+      </div>
+      <div class="tech-category">
+        <h4>Backend Cloud</h4>
+        <ul>
+          <li>Google Cloud Run</li>
+          <li>Cloud SQL PostgreSQL</li>
+          <li>Cloud Storage</li>
+        </ul>
+      </div>
+      <div class="tech-category">
+        <h4>Aplicacion</h4>
+        <ul>
+          <li>React Native + Expo</li>
+          <li>Firebase Auth</li>
+          <li>WebSockets tiempo real</li>
+        </ul>
+      </div>
+      <div class="tech-category">
+        <h4>IA y Vision</h4>
+        <ul>
+          <li>MediaPipe Pose Lite</li>
+          <li>OpenCV + FFmpeg</li>
+          <li>Deteccion en 0.5s</li>
+        </ul>
+      </div>
     </div>
   </section>
 

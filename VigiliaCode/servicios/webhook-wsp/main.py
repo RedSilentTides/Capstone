@@ -312,14 +312,29 @@ def get_template_config(notification_type: str, parameters: dict):
                 }
             ]
         },
-        # Templates futuros (usar hello_world hasta que estén aprobados)
+        "help_alert": {
+            # Template para alertas de ayuda (boton de panico)
+            # Cuando alertasayudastest este aprobada en Meta, cambiar a:
+            # "name": "alertasayudastest",
+            # Por ahora usamos alertacaidatest como fallback
+            "name": "alertasayudastest",  # Cambiado para usar la plantilla correcta
+            "language": "es_CL",
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {
+                            "type": "text",
+                            "parameter_name": "nombre",
+                            "text": parameters.get("nombre_adulto_mayor", "Adulto Mayor")
+                        }
+                    ]
+                }
+            ]
+        },
+        # Templates futuros (usar hello_world hasta que esten aprobados)
         "welcome": {
             "name": "hello_world",  # TODO: Reemplazar con template de bienvenida
-            "language": "en_US",
-            "components": []
-        },
-        "help_alert": {
-            "name": "hello_world",  # TODO: Reemplazar con template de ayuda
             "language": "en_US",
             "components": []
         },

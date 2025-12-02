@@ -100,10 +100,11 @@ export default function AdultoMayorDetalleScreen() {
                     headers: { Authorization: `Bearer ${token}` }
                 });
 
-                // Filtrar solo las caídas de este adulto mayor
-                // Nota: Necesitarías tener la relación dispositivo -> adulto_mayor en el backend
-                // Por ahora, mostramos todas las caídas del cuidador
-                setCaidas(caidasResponse.data.slice(0, 5)); // Últimas 5 caídas
+                // Filtrar solo las caídas de este adulto mayor específico
+                const caidasFiltradas = caidasResponse.data
+                    .filter((caida: EventoCaida) => caida.adulto_mayor_id === parseInt(id))
+                    .slice(0, 5); // Últimas 5 caídas de este adulto mayor
+                setCaidas(caidasFiltradas);
             } catch (caidaError) {
                 console.error('Error al obtener caídas:', caidaError);
                 setCaidas([]);

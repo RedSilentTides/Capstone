@@ -2007,11 +2007,12 @@ async def procesar_recordatorios_pendientes(
 
                 print(f"📨 Procesando recordatorio {recordatorio_id}: {titulo}")
 
-                # 1. Obtener cuidadores del adulto mayor
+                # 1. Obtener cuidadores del adulto mayor (con preferencias de notificacion)
                 query_cuidadores = text("""
-                    SELECT DISTINCT u.id, u.nombre, u.email, u.push_token
+                    SELECT DISTINCT u.id, u.nombre, u.email, u.push_token, ca.notificar_app
                     FROM usuarios u
                     JOIN cuidadores_adultos_mayores cam ON u.id = cam.usuario_id
+                    LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
                     WHERE cam.adulto_mayor_id = :adulto_mayor_id
                       AND u.rol = 'cuidador'
                 """)
@@ -2021,10 +2022,12 @@ async def procesar_recordatorios_pendientes(
                     print(f"⚠️  No hay cuidadores para adulto mayor {adulto_mayor_id}")
                     continue
 
-                # 2. Enviar notificaciones Push
+                # 2. Enviar notificaciones Push (solo a cuidadores con notificar_app habilitado)
                 push_count = 0
                 for cuidador in cuidadores:
-                    if cuidador.push_token:  # Si tiene push token registrado
+                    # Verificar si tiene push habilitado (default True si no esta configurado)
+                    notificar_app = cuidador.notificar_app
+                    if cuidador.push_token and (notificar_app is None or notificar_app):  # Si tiene push token y push habilitado
                         try:
                             message = messaging.Message(
                                 notification=messaging.Notification(
@@ -2044,17 +2047,57 @@ async def procesar_recordatorios_pendientes(
                         except Exception as push_error:
                             print(f"⚠️  Error Push para {cuidador.nombre}: {str(push_error)}")
 
-                # 3. Enviar notificaciones por Email (enviar a TODOS los cuidadores)
+                # 3. Enviar notificaciones por Email
+                # IMPORTANTE: Solo enviar a cuidadores con notificar_email habilitado
                 email_count = 0
+
+                # 3a. Obtener cuidadores con email habilitado en sus preferencias
+                query_email_cuidadores = text("""
+                    SELECT u.id, u.nombre, u.email, ca.notificar_email, ca.email_secundario
+                    FROM usuarios u
+                    INNER JOIN cuidadores_adultos_mayores cam ON cam.usuario_id = u.id
+                    LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
+                    WHERE cam.adulto_mayor_id = :adulto_mayor_id
+                      AND u.rol = 'cuidador'
+                      AND (ca.notificar_email IS NULL OR ca.notificar_email = TRUE)
+                """)
+                cuidadores_email = db_conn.execute(query_email_cuidadores, {"adulto_mayor_id": adulto_mayor_id}).fetchall()
+
+                # 3b. Obtener email del adulto mayor (a traves de su usuario asociado)
+                # Solo si tiene notificar_email habilitado en sus preferencias
+                query_email_am = text("""
+                    SELECT u.email, u.nombre, am.nombre_completo, ca.notificar_email
+                    FROM adultos_mayores am
+                    LEFT JOIN usuarios u ON am.usuario_id = u.id
+                    LEFT JOIN configuraciones_alerta ca ON ca.usuario_id = u.id
+                    WHERE am.id = :adulto_mayor_id
+                      AND u.email IS NOT NULL
+                      AND (ca.notificar_email IS NULL OR ca.notificar_email = TRUE)
+                """)
+                adulto_mayor_user = db_conn.execute(query_email_am, {"adulto_mayor_id": adulto_mayor_id}).fetchone()
 
                 # Preparar lista de destinatarios
                 destinatarios_email = []
-                for cuidador in cuidadores:
-                    if cuidador.email:
+
+                # Agregar cuidadores con email habilitado
+                for cuidador in cuidadores_email:
+                    email_destino = cuidador.email_secundario if cuidador.email_secundario else cuidador.email
+                    if email_destino:
                         destinatarios_email.append({
-                            "email": cuidador.email,
+                            "email": email_destino,
                             "nombre": cuidador.nombre
                         })
+                        print(f"[EMAIL] Cuidador {cuidador.nombre} tiene email habilitado")
+
+                # Agregar adulto mayor si tiene usuario con email y notificaciones habilitadas
+                if adulto_mayor_user and adulto_mayor_user.email:
+                    destinatarios_email.append({
+                        "email": adulto_mayor_user.email,
+                        "nombre": adulto_mayor_user.nombre_completo or adulto_mayor_user.nombre
+                    })
+                    print(f"[EMAIL] Adulto mayor {nombre_adulto_mayor} agregado como destinatario")
+                else:
+                    print(f"[EMAIL] Adulto mayor {nombre_adulto_mayor} NO agregado (sin email o notificaciones deshabilitadas)")
 
                 if destinatarios_email:
                     # Convertir fecha_hora_programada de UTC a timezone de Chile
@@ -2081,6 +2124,8 @@ async def procesar_recordatorios_pendientes(
                         email_count = email_result.get("sent_count", 0)
                     else:
                         print(f"⚠️  Error al enviar emails via api-email: {email_result.get('error')}")
+                else:
+                    print(f"[EMAIL] No hay destinatarios con email habilitado para este recordatorio")
 
                 # 4. Enviar notificaciones por WhatsApp (deshabilitado por ahora)
                 # NOTA: Requiere agregar columna 'telefono' a tabla usuarios
@@ -3495,6 +3540,60 @@ def verificar_cooldown_extendido(
                 "cooldown_activo": False,
                 "puede_crear_alerta": True
             }
+
+
+@app.post("/dispositivos/reset-cooldown")
+def reset_cooldown_extendido(
+    request: CheckCooldownRequest,
+    is_authorized: bool = Depends(verify_internal_token)
+):
+    """
+    Endpoint interno para resetear el cooldown extendido de un dispositivo.
+    Util para pruebas: permite reiniciar el ciclo de deteccion sin esperar el timeout.
+    Tambien resetea el estado 'ya voy' (confirmado_por_cuidador) para pruebas completas.
+    """
+    try:
+        with engine.connect() as db_conn:
+            trans = db_conn.begin()
+            try:
+                # Remover el cooldown_extendido_hasta y resetear confirmado_por_cuidador
+                # para permitir pruebas completas del flujo
+                query_update = text("""
+                    UPDATE alertas
+                    SET
+                        detalles_adicionales = detalles_adicionales - 'cooldown_extendido_hasta',
+                        confirmado_por_cuidador = FALSE
+                    WHERE adulto_mayor_id = :adulto_mayor_id
+                      AND dispositivo_id = :dispositivo_id
+                      AND confirmado_por_cuidador = TRUE
+                """)
+                result = db_conn.execute(query_update, {
+                    "adulto_mayor_id": request.adulto_mayor_id,
+                    "dispositivo_id": request.dispositivo_id
+                })
+
+                rows_affected = result.rowcount
+                trans.commit()
+
+                print(f"[INFO] Cooldown y estado 'ya voy' reseteados para dispositivo {request.dispositivo_id}, adulto_mayor {request.adulto_mayor_id}. Filas afectadas: {rows_affected}")
+
+                return {
+                    "success": True,
+                    "message": f"Cooldown y estado 'ya voy' reseteados exitosamente",
+                    "alertas_reseteadas": rows_affected
+                }
+
+            except Exception as e:
+                trans.rollback()
+                raise e
+
+    except Exception as e:
+        print(f"[ERROR] Error al resetear cooldown: {e}")
+        return {
+            "success": False,
+            "message": f"Error al resetear cooldown: {str(e)}",
+            "cooldowns_limpiados": 0
+        }
 
 
 @app.post("/internal/setup-alertas-vistas-table")

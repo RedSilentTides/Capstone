@@ -1,4 +1,3 @@
-root@nanopineo4:/home/judex# cat /opt/vigilia-edge/fall_detection_edge.py
 #!/usr/bin/env python3
 """
 Detección de Caídas en Edge con MediaPipe
@@ -266,7 +265,7 @@ def get_or_create_device_id():
         return None, None
 
 def check_cooldown_extendido(dispositivo_id, adulto_mayor_id):
-    """Verifica si hay cooldown extendido activo (cuidador confirmó "Ya voy")"""
+    """Verifica si hay cooldown extendido activo (cuidador confirmo "Ya voy")"""
     endpoint = f"{BACKEND_API_URL}/dispositivos/check-cooldown"
     headers = {
         "X-Internal-Token": INTERNAL_API_KEY,
@@ -285,11 +284,42 @@ def check_cooldown_extendido(dispositivo_id, adulto_mayor_id):
 
         if data.get("cooldown_activo"):
             segundos_restantes = data.get("cooldown_expira_en_segundos", 0)
-            log(f"⏸️  Cooldown extendido activo: {segundos_restantes}s restantes (cuidador confirmó asistencia)")
+            log(f"[COOLDOWN] Cooldown extendido activo: {segundos_restantes}s restantes (cuidador confirmo asistencia)")
             return True
         return False
     except Exception as e:
-        log(f"⚠️  Error al verificar cooldown: {e} (asumiendo sin cooldown)")
+        log(f"[WARN] Error al verificar cooldown: {e} (asumiendo sin cooldown)")
+        return False
+
+
+def reset_cooldown_extendido(dispositivo_id, adulto_mayor_id):
+    """Resetea el cooldown extendido al iniciar el servicio (util para pruebas)"""
+    endpoint = f"{BACKEND_API_URL}/dispositivos/reset-cooldown"
+    headers = {
+        "X-Internal-Token": INTERNAL_API_KEY,
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(
+            endpoint,
+            json={"dispositivo_id": dispositivo_id, "adulto_mayor_id": adulto_mayor_id},
+            headers=headers,
+            timeout=5
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("success"):
+            cooldowns_limpiados = data.get("cooldowns_limpiados", 0)
+            if cooldowns_limpiados > 0:
+                log(f"[OK] Cooldown extendido reseteado ({cooldowns_limpiados} alertas limpiadas)")
+            else:
+                log("[OK] No habia cooldown activo para resetear")
+            return True
+        return False
+    except Exception as e:
+        log(f"[WARN] Error al resetear cooldown: {e}")
         return False
 
 
@@ -343,11 +373,14 @@ def main():
     # Obtener device ID
     dispositivo_id, adulto_mayor_id = get_or_create_device_id()
     if not dispositivo_id:
-        log("⚠️  No se pudo obtener device ID, continuando sin backend...")
+        log("[WARN] No se pudo obtener device ID, continuando sin backend...")
     else:
-        log(f"✅ Device ID: {dispositivo_id}, Adulto Mayor ID: {adulto_mayor_id}")
+        log(f"[OK] Device ID: {dispositivo_id}, Adulto Mayor ID: {adulto_mayor_id}")
+        # Resetear cooldown extendido al iniciar (util para pruebas con stakeholders)
+        log("[INFO] Reseteando cooldown extendido para pruebas...")
+        reset_cooldown_extendido(dispositivo_id, adulto_mayor_id)
 
-    # Conectar a cámara RTSP (ULTRA-OPTIMIZADO para RAM limitada)
+    # Conectar a camara RTSP (ULTRA-OPTIMIZADO para RAM limitada)
     log("🔌 Conectando a stream RTSP (substream, ultra-ligero)...")
 
     # Configurar variables de entorno para FFmpeg (mínimo uso de memoria)

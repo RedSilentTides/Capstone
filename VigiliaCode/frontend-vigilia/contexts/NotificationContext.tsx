@@ -356,25 +356,29 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         // 3. Configurar listeners para notificaciones
         // Listener para notificaciones recibidas (app en foreground)
         notificationListener.current = addNotificationReceivedListener((notification) => {
-          console.log('📱 Notificación recibida en foreground:', notification);
+          console.log('[PUSH] Notificacion recibida en foreground:', notification);
           setNotification(notification);
 
           // Disparar evento personalizado para que las vistas se refresquen
           const data = notification.request.content.data;
           const tipo = data?.tipo || 'nueva_alerta';
 
-          console.log('📱 Disparando evento de notificación:', tipo);
+          console.log('[PUSH] Tipo de notificacion:', tipo);
 
-          // Para móvil: usar DeviceEventEmitter
-          DeviceEventEmitter.emit('nueva-alerta', {
+          // Determinar el nombre del evento segun el tipo de notificacion
+          const eventName = tipo === 'confirmacion_alerta' ? 'confirmacion-alerta' : 'nueva-alerta';
+          console.log('[PUSH] Disparando evento:', eventName);
+
+          // Para movil: usar DeviceEventEmitter con el evento correcto
+          DeviceEventEmitter.emit(eventName, {
             tipo,
             data,
             notification
           });
 
-          // Para web: usar window.dispatchEvent (si está disponible)
+          // Para web: usar window.dispatchEvent (si esta disponible)
           if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('nueva-alerta', {
+            window.dispatchEvent(new CustomEvent(eventName, {
               detail: { tipo, data, notification }
             }));
           }
@@ -382,25 +386,32 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         // Listener para cuando el usuario toca una notificación
         responseListener.current = addNotificationResponseReceivedListener((response) => {
-          console.log('📱 Usuario tocó la notificación:', response);
+          console.log('[PUSH] Usuario toco la notificacion:', response);
 
           // Navegar según el tipo de notificación
           const data = response.notification.request.content.data;
+          const tipo = data?.tipo || 'nueva_alerta';
 
-          // Disparar evento antes de navegar
-          console.log('📱 Disparando evento antes de navegar');
-          DeviceEventEmitter.emit('nueva-alerta', {
-            tipo: data?.tipo || 'nueva_alerta',
+          // Determinar el nombre del evento segun el tipo
+          const eventName = tipo === 'confirmacion_alerta' ? 'confirmacion-alerta' : 'nueva-alerta';
+          console.log('[PUSH] Disparando evento antes de navegar:', eventName);
+
+          DeviceEventEmitter.emit(eventName, {
+            tipo,
             data,
             notification: response.notification
           });
 
-          if (data?.tipo === 'alerta') {
+          // Navegar segun el tipo de notificacion
+          if (tipo === 'alerta' || tipo === 'nueva_alerta') {
             router.push('/cuidador/alertas' as any);
-          } else if (data?.tipo === 'recordatorio') {
+          } else if (tipo === 'recordatorio') {
             router.push('/cuidador/recordatorios' as any);
-          } else if (data?.tipo === 'solicitud') {
+          } else if (tipo === 'solicitud') {
             router.push('/cuidador/solicitudes' as any);
+          } else if (tipo === 'confirmacion_alerta') {
+            // Para adultos mayores, ir al index para ver la confirmacion
+            router.push('/' as any);
           }
         });
 

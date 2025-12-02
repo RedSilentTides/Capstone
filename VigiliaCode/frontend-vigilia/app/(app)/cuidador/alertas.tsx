@@ -104,6 +104,16 @@ interface AyudasPorAdultoMayor {
   ayudas: AlertaAyuda[];
 }
 
+interface AdultoMayor {
+  id: number;
+  usuario_id: number | null;
+  nombre_completo: string;
+  fecha_nacimiento: string | null;
+  direccion: string | null;
+  notas_relevantes: string | null;
+  fecha_registro: string;
+}
+
 // Configuración visual para cada tipo de alerta
 const alertConfig: Record<AlertType, { color: string; bgColor: string }> = {
   caida: { color: '#ef4444', bgColor: '#fee2e2' },
@@ -117,18 +127,26 @@ const alertConfig: Record<AlertType, { color: string; bgColor: string }> = {
 function DashboardCaidas({
   eventos,
   recordatorios,
+  adultosMayores,
   onSelectRecordatorio
 }: {
   eventos: EventoCaida[];
   recordatorios: RecordatoriosPorAdultoMayor[];
+  adultosMayores: AdultoMayor[];
   onSelectRecordatorio: (recordatorio: any) => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<'7days' | 'calendar'>('7days'); // Selector de vista
   const [selectedMonth, setSelectedMonth] = useState(dayjs().format('YYYY-MM')); // Mes seleccionado para calendario
   const [selectedDay, setSelectedDay] = useState<string | null>(null); // Día seleccionado en calendario
+  const [selectedAdultoMayorId, setSelectedAdultoMayorId] = useState<number | null>(null); // null = Todos
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = Math.min(screenWidth - 48, 400);
+
+  // Filtrar eventos por adulto mayor seleccionado
+  const eventosFiltrados = selectedAdultoMayorId
+    ? eventos.filter(e => e.adulto_mayor_id === selectedAdultoMayorId)
+    : eventos;
 
   // Agregar datos por día (últimos 7 días)
   const getCaidasPorDia = () => {
@@ -141,7 +159,7 @@ function DashboardCaidas({
       };
     });
 
-    eventos.forEach(evento => {
+    eventosFiltrados.forEach(evento => {
       const fechaEvento = dayjs(evento.timestamp_alerta).format('YYYY-MM-DD');
       const dia = ultimos7Dias.find(d => d.fecha === fechaEvento);
       if (dia) {
@@ -152,12 +170,17 @@ function DashboardCaidas({
     return ultimos7Dias;
   };
 
+  // Filtrar recordatorios por adulto mayor seleccionado
+  const recordatoriosFiltrados = selectedAdultoMayorId
+    ? recordatorios.filter(grupo => grupo.adulto_mayor_id === selectedAdultoMayorId)
+    : recordatorios;
+
   // Obtener días con caídas y recordatorios para el calendario
   const getMarkedDates = () => {
     const marked: any = {};
 
-    // Agregar caídas
-    eventos.forEach(evento => {
+    // Agregar caídas (filtradas por adulto mayor seleccionado)
+    eventosFiltrados.forEach(evento => {
       const fecha = dayjs(evento.timestamp_alerta).format('YYYY-MM-DD');
       if (!marked[fecha]) {
         marked[fecha] = {
@@ -170,8 +193,8 @@ function DashboardCaidas({
       marked[fecha].caidaCount++;
     });
 
-    // Agregar recordatorios
-    recordatorios.forEach(grupo => {
+    // Agregar recordatorios (filtrados por adulto mayor seleccionado)
+    recordatoriosFiltrados.forEach(grupo => {
       grupo.recordatorios.forEach(rec => {
         const fecha = dayjs(rec.fecha_hora_programada).format('YYYY-MM-DD');
         if (!marked[fecha]) {
@@ -225,7 +248,7 @@ function DashboardCaidas({
       count: 0
     }));
 
-    eventos.forEach(evento => {
+    eventosFiltrados.forEach(evento => {
       const hora = dayjs(evento.timestamp_alerta).hour();
       horas[hora].count++;
     });
@@ -237,7 +260,7 @@ function DashboardCaidas({
   const caidasPorDia = getCaidasPorDia();
   const caidasPorHora = getCaidasPorHora();
   const markedDates = getMarkedDates();
-  const totalCaidas = eventos.length;
+  const totalCaidas = eventosFiltrados.length;
   const promedioPorDia = (totalCaidas / 7).toFixed(1);
   const horaPico = caidasPorHora.length > 0
     ? caidasPorHora.reduce((prev, current) => (prev.count > current.count) ? prev : current)
@@ -251,24 +274,60 @@ function DashboardCaidas({
       >
         <View style={styles.dashboardHeaderContent}>
           <BarChart3 size={24} color="#7c3aed" />
-          <Text style={styles.dashboardTitle}>Estadísticas de Caídas</Text>
+          <Text style={styles.dashboardTitle}>Estadisticas de Caidas</Text>
         </View>
         <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
       </Pressable>
 
       {isExpanded && (
         <View style={styles.dashboardContent}>
+          {/* Selector de Adulto Mayor */}
+          {adultosMayores.length > 0 && (
+            <View style={styles.adultoMayorSelectorContainer}>
+              <Text style={styles.selectorLabel}>Filtrar por persona:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScrollView}>
+                <Pressable
+                  style={[
+                    styles.selectorChip,
+                    selectedAdultoMayorId === null && styles.selectorChipActive
+                  ]}
+                  onPress={() => setSelectedAdultoMayorId(null)}
+                >
+                  <Text style={[
+                    styles.selectorChipText,
+                    selectedAdultoMayorId === null && styles.selectorChipTextActive
+                  ]}>Todos</Text>
+                </Pressable>
+                {adultosMayores.map(am => (
+                  <Pressable
+                    key={am.id}
+                    style={[
+                      styles.selectorChip,
+                      selectedAdultoMayorId === am.id && styles.selectorChipActive
+                    ]}
+                    onPress={() => setSelectedAdultoMayorId(am.id)}
+                  >
+                    <Text style={[
+                      styles.selectorChipText,
+                      selectedAdultoMayorId === am.id && styles.selectorChipTextActive
+                    ]}>{am.nombre_completo}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           {/* Métricas principales */}
           <View style={styles.metricsRow}>
             <View style={styles.metricCard}>
               <AlertTriangle size={20} color="#ef4444" />
               <Text style={styles.metricValue}>{totalCaidas}</Text>
-              <Text style={styles.metricLabel}>Total (7 días)</Text>
+              <Text style={styles.metricLabel}>Total (7 dias)</Text>
             </View>
             <View style={styles.metricCard}>
               <TrendingUp size={20} color="#3b82f6" />
               <Text style={styles.metricValue}>{promedioPorDia}</Text>
-              <Text style={styles.metricLabel}>Promedio/día</Text>
+              <Text style={styles.metricLabel}>Promedio/dia</Text>
             </View>
             <View style={styles.metricCard}>
               <Clock size={20} color="#7c3aed" />
@@ -906,6 +965,7 @@ export default function AlertasScreen() {
   const [recordatoriosPorAdultoMayor, setRecordatoriosPorAdultoMayor] = useState<RecordatoriosPorAdultoMayor[]>([]);
   const [caidasPorAdultoMayor, setCaidasPorAdultoMayor] = useState<CaidasPorAdultoMayor[]>([]);
   const [ayudasPorAdultoMayor, setAyudasPorAdultoMayor] = useState<AyudasPorAdultoMayor[]>([]);
+  const [adultosMayores, setAdultosMayores] = useState<AdultoMayor[]>([]);
   const [expandedCaidas, setExpandedCaidas] = useState<Set<number>>(new Set());
   const [expandedAyudas, setExpandedAyudas] = useState<Set<number>>(new Set());
   const [expandedRecordatorios, setExpandedRecordatorios] = useState<Set<number>>(new Set());
@@ -1038,6 +1098,21 @@ export default function AlertasScreen() {
       return null;
     }
   }, [user, showToast]);
+
+  // Obtener adultos mayores asignados al cuidador
+  const fetchAdultosMayores = useCallback(async () => {
+    if (!user || !userProfile || userProfile.rol !== 'cuidador') return;
+    try {
+      const token = await user.getIdToken();
+      const response = await axios.get<AdultoMayor[]>(`${API_URL}/adultos-mayores`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAdultosMayores(response.data);
+      console.log('[ALERTAS] Adultos mayores cargados:', response.data.length);
+    } catch (err) {
+      console.error('[ALERTAS] Error al obtener adultos mayores:', err);
+    }
+  }, [user, userProfile]);
 
   const fetchAlertas = useCallback(async (isRefreshing = false, silentUpdate = false) => {
     if (!user || !userProfile) return;
@@ -1172,12 +1247,13 @@ export default function AlertasScreen() {
     inicializarRecordatoriosLeidos();
   }, [cargarRecordatoriosLeidos]);
 
-  // Cargar alertas al montar (solo después de obtener el perfil)
+  // Cargar alertas y adultos mayores al montar (solo después de obtener el perfil)
   useEffect(() => {
     if (userProfile) {
       fetchAlertas();
+      fetchAdultosMayores();
     }
-  }, [userProfile]);
+  }, [userProfile, fetchAdultosMayores]);
 
   // Auto-refresh cada 30 segundos
   useEffect(() => {
@@ -1428,6 +1504,7 @@ export default function AlertasScreen() {
               <DashboardCaidas
                 eventos={eventosCaida}
                 recordatorios={recordatoriosPorAdultoMayor}
+                adultosMayores={adultosMayores}
                 onSelectRecordatorio={async (rec) => {
                   setSelectedRecordatorio(rec);
                   setIsModalVisible(true);
@@ -1864,6 +1941,40 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Estilos para selector de adulto mayor
+  adultoMayorSelectorContainer: {
+    marginBottom: 16,
+  },
+  selectorLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  selectorScrollView: {
+    flexGrow: 0,
+  },
+  selectorChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  selectorChipActive: {
+    backgroundColor: '#7c3aed',
+    borderColor: '#7c3aed',
+  },
+  selectorChipText: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  selectorChipTextActive: {
+    color: '#ffffff',
   },
   statsSection: {
     flexDirection: 'row',
@@ -2596,5 +2707,14 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     fontWeight: '900',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
