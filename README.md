@@ -145,7 +145,6 @@ Capstone/
 │
 ├── docs/                          # Documentación técnica
 ├── Fase 1-3/                      # Evidencias académicas
-├── CLAUDE.md                      # Directrices de desarrollo
 └── README.md                      # Este archivo
 ```
 
@@ -195,95 +194,11 @@ Capstone/
 
 ---
 
-## Base de Datos
-
-### Tablas Principales
-
-| Tabla | Descripción |
-|-------|-------------|
-| `usuarios` | Cuentas (cuidador, adulto_mayor, administrador) |
-| `adultos_mayores` | Perfiles de personas monitoreadas |
-| `cuidadores_adultos_mayores` | Vinculación N:N |
-| `dispositivos` | NanoPis con config de cámara |
-| `alertas` | Eventos de caída y solicitudes de ayuda |
-| `recordatorios` | Medicamentos, citas, ejercicio |
-| `configuraciones_alerta` | Preferencias (push, email, whatsapp) |
-| `suscripciones` | Planes (básico, plus, premium) |
-
----
-
-## Despliegue
-
-### Frontend Web
-
-```bash
-cd VigiliaCode/frontend-vigilia
-npx expo export -p web
-firebase deploy --only hosting
-```
-
-**URL**: https://app.mivigilia.cl
-
-### Backend API
-
-```bash
-cd VigiliaCode/servicios/api-backend
-powershell -ExecutionPolicy Bypass -File deploy-api-backend.ps1
-```
-
-**URL**: https://api-backend-687053793381.southamerica-west1.run.app
-
-### App Móvil (APK)
-
-```bash
-cd VigiliaCode/frontend-vigilia
-npx eas build --platform android --profile preview
-```
-
----
-
-## Configuración de Notificaciones
-
-### WhatsApp Business API
-
-- Templates configurados: `alertacaidatest`, `alertasayudastest`
-- Variables: nombre del adulto mayor, timestamp
-- Requiere número verificado en Meta Business
-
-### Email (SendGrid)
-
-- Templates HTML para alertas y recordatorios
-- Configuración vía `EMAIL_SERVICE_URL`
-
-### Push Notifications (Expo)
-
-- Firebase Cloud Messaging (FCM)
-- Token almacenado en `usuarios.token_fcm_app`
-
----
-
-## Variables de Entorno
-
-### api-backend
-
-| Variable | Descripción |
-|----------|-------------|
-| `INSTANCE_CONNECTION_NAME` | Cloud SQL connection string |
-| `DB_USER` | Usuario PostgreSQL |
-| `DB_PASS` | Password (desde Secret Manager) |
-| `DB_NAME` | Nombre de base de datos |
-| `INTERNAL_API_KEY` | Clave para comunicación interna |
-| `WEBSOCKET_SERVICE_URL` | URL del servicio WebSocket |
-| `EMAIL_SERVICE_URL` | URL del servicio de emails |
-| `WHATSAPP_SERVICE_URL` | URL del servicio WhatsApp |
-
----
-
 ## Equipo de Desarrollo
 
 Proyecto Capstone desarrollado para monitoreo y asistencia de adultos mayores.
 
-**Región**: Santiago, Chile (southamerica-west1)
+**Región**: Santiago, Chile
 
 **Proyecto GCP**: composed-apogee-475623-p6
 
